@@ -44,6 +44,12 @@ Install required collections:
 ansible-galaxy collection install -r requirements.yml
 ```
 
+Install local validation tools when they are not already available:
+
+```bash
+python -m pip install ansible-core ansible-lint yamllint
+```
+
 ## Quick Start
 
 Review and edit the lab inventory:
@@ -64,14 +70,21 @@ inventories/lab/group_vars/kube_cluster.yml
 Run a syntax check:
 
 ```bash
-ansible-playbook --syntax-check site.yml
+scripts/syntax-check.sh
 ```
 
-Run static validation when the tools are available:
+Run static validation:
+
+```bash
+scripts/lint.sh
+```
+
+The local validation commands run the same checks as CI:
 
 ```bash
 yamllint .
-ansible-lint
+ansible-lint .
+ansible-playbook -i inventories/lab/hosts.ini site.yml --syntax-check
 ```
 
 Preview where possible:
@@ -85,6 +98,23 @@ Apply the playbook only after reviewing inventory values and safety notes:
 ```bash
 ansible-playbook site.yml
 ```
+
+## Local Validation
+
+Run static checks:
+
+```bash
+scripts/lint.sh
+```
+
+Run the Ansible syntax check:
+
+```bash
+scripts/syntax-check.sh
+```
+
+The syntax check uses `inventories/lab/hosts.ini` and does not connect to target
+hosts or run tasks. CI runs the same checks on every push and pull request.
 
 ## Safety Notes
 
