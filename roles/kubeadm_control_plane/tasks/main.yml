@@ -1,6 +1,302 @@
 ---
-- name: Kubeadm control plane placeholder
-  ansible.builtin.debug:
-    msg: "Control-plane bootstrap is not implemented yet."
+- name: Assert kubeadm control-plane role is enabled
+  ansible.builtin.assert:
+    that:
+      - kubeadm_control_plane_enabled | bool
+    fail_msg: >-
+      The kubeadm_control_plane role is disabled. Set
+      kubeadm_control_plane_enabled=true to run it.
+    success_msg: "kubeadm control-plane role is enabled."
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Set kubeadm control-plane host facts
+  ansible.builtin.set_fact:
+    kubeadm_first_control_plane: >-
+      {{ groups.get('kube_control_plane', []) | first | default('') }}
+    kubeadm_is_control_plane: >-
+      {{ inventory_hostname in groups.get('kube_control_plane', []) }}
+    kubeadm_node_advertise_address: >-
+      {{
+        ansible_host
+        | default(ansible_default_ipv4.address | default(''))
+      }}
+    kubeadm_control_plane_endpoint_host: >-
+      {{
+        control_plane_endpoint
+        | default('')
+        | regex_replace('^\[([^]]+)\].*$', '\\1')
+        | regex_replace(':.*$', '')
+      }}
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Assert control-plane inventory group exists
+  ansible.builtin.assert:
+    that:
+      - groups.get('kube_control_plane', []) | length > 0
+    fail_msg: "The kube_control_plane inventory group must contain at least one host."
+    success_msg: "kube_control_plane inventory group is present."
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Assert required kubeadm control-plane variables are defined
+  ansible.builtin.assert:
+    that:
+      - control_plane_endpoint is defined
+      - control_plane_endpoint | string | length > 0
+      - pod_cidr is defined
+      - pod_cidr | string | length > 0
+      - service_cidr is defined
+      - service_cidr | string | length > 0
+      - cluster_dns_domain is defined
+      - cluster_dns_domain | string | length > 0
+      - cri_socket is defined
+      - cri_socket | string | length > 0
+    fail_msg: >-
+      control_plane_endpoint, pod_cidr, service_cidr, cluster_dns_domain, and
+      cri_socket must be defined before kubeadm control-plane bootstrap.
+    success_msg: "Required kubeadm control-plane variables are defined."
+  when: kubeadm_is_control_plane | bool
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Assert control-plane advertise address is known
+  ansible.builtin.assert:
+    that:
+      - kubeadm_node_advertise_address | string | length > 0
+    fail_msg: >-
+      {{ inventory_hostname }} must define ansible_host or expose
+      ansible_default_ipv4.address for kubeadm advertiseAddress.
+    success_msg: "Control-plane advertise address is known."
+  when: kubeadm_is_control_plane | bool
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Check control-plane initialization state
+  ansible.builtin.stat:
+    path: "{{ kubeadm_admin_conf_path }}"
+  register: kubeadm_control_plane_admin_conf_stat
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Render kubeadm init configuration on first control-plane
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/kubeadm-config.yaml.j2"
+    dest: "{{ kubeadm_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - inventory_hostname == kubeadm_first_control_plane
+    - not kubeadm_control_plane_admin_conf_stat.stat.exists
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Initialize first control-plane node
+  ansible.builtin.command:
+    cmd: >-
+      kubeadm init --config {{ kubeadm_config_path }}
+      {{ '--upload-certs' if kubeadm_upload_certs | bool else '' }}
+    creates: "{{ kubeadm_admin_conf_path }}"
+  register: kubeadm_init_result
+  no_log: "{{ kubeadm_upload_certs | bool }}"
+  when:
+    - inventory_hostname == kubeadm_first_control_plane
+    - not kubeadm_control_plane_admin_conf_stat.stat.exists
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Create root kubeconfig directory on first control-plane
+  ansible.builtin.file:
+    path: "{{ kubeadm_root_kube_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: inventory_hostname == kubeadm_first_control_plane
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Copy admin kubeconfig for root on first control-plane
+  ansible.builtin.copy:
+    src: "{{ kubeadm_admin_conf_path }}"
+    dest: "{{ kubeconfig_root_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    remote_src: true
+  when: inventory_hostname == kubeadm_first_control_plane
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Generate kubeadm node join command on first control-plane
+  ansible.builtin.command:
+    cmd: >-
+      kubeadm token create --ttl {{ kubeadm_join_token_ttl }}
+      --print-join-command
+  register: kubeadm_worker_join_command_result
   changed_when: false
-  when: kubeadm_control_plane_enabled
+  no_log: true
+  when: inventory_hostname == kubeadm_first_control_plane
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Store kubeadm worker join command fact
+  ansible.builtin.set_fact:
+    kubeadm_worker_join_command: "{{ kubeadm_worker_join_command_result.stdout }}"
+  no_log: true
+  when: inventory_hostname == kubeadm_first_control_plane
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Upload control-plane certificates when HA joins are needed
+  ansible.builtin.command:
+    cmd: kubeadm init phase upload-certs --upload-certs
+  register: kubeadm_upload_certs_result
+  changed_when: false
+  no_log: true
+  when:
+    - inventory_hostname == kubeadm_first_control_plane
+    - kubeadm_upload_certs | bool
+    - groups.get('kube_control_plane', []) | length > 1
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Store kubeadm certificate key fact
+  ansible.builtin.set_fact:
+    kubeadm_certificate_key: >-
+      {{
+        kubeadm_upload_certs_result.stdout
+        | regex_search('[a-f0-9]{64}')
+      }}
+  no_log: true
+  when:
+    - inventory_hostname == kubeadm_first_control_plane
+    - kubeadm_upload_certs | bool
+    - groups.get('kube_control_plane', []) | length > 1
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Store kubeadm control-plane join command fact
+  ansible.builtin.set_fact:
+    kubeadm_control_plane_join_command: >-
+      {{ kubeadm_worker_join_command }}
+      --control-plane
+      --certificate-key {{ kubeadm_certificate_key }}
+      --cri-socket {{ cri_socket }}
+  no_log: true
+  when:
+    - inventory_hostname == kubeadm_first_control_plane
+    - kubeadm_upload_certs | bool
+    - groups.get('kube_control_plane', []) | length > 1
+    - kubeadm_certificate_key is defined
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Assert certificate upload is enabled for HA control-plane joins
+  ansible.builtin.assert:
+    that:
+      - kubeadm_upload_certs | bool
+    fail_msg: >-
+      Additional control-plane joins require kubeadm_upload_certs=true so
+      kubeadm can provide a certificate key.
+    success_msg: "Certificate upload is enabled for HA control-plane joins."
+  when:
+    - kubeadm_is_control_plane | bool
+    - inventory_hostname != kubeadm_first_control_plane
+    - groups.get('kube_control_plane', []) | length > 1
+    - not kubeadm_control_plane_admin_conf_stat.stat.exists
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Assert certificate key was generated for HA control-plane joins
+  ansible.builtin.assert:
+    that:
+      - hostvars[kubeadm_first_control_plane].kubeadm_certificate_key is defined
+      - >-
+        hostvars[kubeadm_first_control_plane].kubeadm_control_plane_join_command
+        is defined
+      - >-
+        hostvars[kubeadm_first_control_plane].kubeadm_certificate_key
+        | string
+        | length == 64
+    fail_msg: >-
+      kubeadm did not return a valid certificate key for additional
+      control-plane joins.
+    success_msg: "Certificate key for HA control-plane joins is available."
+  no_log: true
+  when:
+    - kubeadm_is_control_plane | bool
+    - inventory_hostname != kubeadm_first_control_plane
+    - kubeadm_upload_certs | bool
+    - groups.get('kube_control_plane', []) | length > 1
+    - not kubeadm_control_plane_admin_conf_stat.stat.exists
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Join additional control-plane nodes
+  ansible.builtin.command:
+    cmd: "{{ hostvars[kubeadm_first_control_plane].kubeadm_control_plane_join_command }}"
+    creates: "{{ kubeadm_admin_conf_path }}"
+  register: kubeadm_control_plane_join_result
+  no_log: true
+  when:
+    - kubeadm_is_control_plane | bool
+    - inventory_hostname != kubeadm_first_control_plane
+    - not kubeadm_control_plane_admin_conf_stat.stat.exists
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Create root kubeconfig directory on additional control-plane nodes
+  ansible.builtin.file:
+    path: "{{ kubeadm_root_kube_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when:
+    - kubeadm_is_control_plane | bool
+    - inventory_hostname != kubeadm_first_control_plane
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Copy admin kubeconfig on additional control-plane nodes
+  ansible.builtin.copy:
+    src: "{{ kubeadm_admin_conf_path }}"
+    dest: "{{ kubeconfig_root_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    remote_src: true
+  when:
+    - kubeadm_is_control_plane | bool
+    - inventory_hostname != kubeadm_first_control_plane
+    - >-
+      kubeadm_control_plane_admin_conf_stat.stat.exists
+      or (
+        kubeadm_control_plane_join_result is defined
+        and kubeadm_control_plane_join_result is changed
+      )
+  tags:
+    - control-plane
+    - kubeadm

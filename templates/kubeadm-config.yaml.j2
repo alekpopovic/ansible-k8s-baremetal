@@ -1,0 +1,28 @@
+---
+apiVersion: {{ kubeadm_config_api_version }}
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: "{{ kubeadm_node_advertise_address }}"
+nodeRegistration:
+  criSocket: "{{ cri_socket }}"
+---
+apiVersion: {{ kubeadm_config_api_version }}
+kind: ClusterConfiguration
+{% if k8s_version is defined and k8s_version | string | length > 0 %}
+kubernetesVersion: "v{{ k8s_version | regex_replace('^v', '') | regex_replace('-.*$', '') }}"
+{% endif %}
+controlPlaneEndpoint: "{{ control_plane_endpoint }}"
+networking:
+  podSubnet: "{{ pod_cidr }}"
+  serviceSubnet: "{{ service_cidr }}"
+  dnsDomain: "{{ cluster_dns_domain }}"
+apiServer:
+  certSANs:
+    - "{{ inventory_hostname }}"
+    - "{{ ansible_hostname }}"
+    - "{{ kubeadm_node_advertise_address }}"
+    - "{{ kubeadm_control_plane_endpoint_host }}"
+---
+apiVersion: {{ kubeadm_kubelet_config_api_version }}
+kind: KubeletConfiguration
+cgroupDriver: systemd

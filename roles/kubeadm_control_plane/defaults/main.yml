@@ -1,2 +1,10 @@
 ---
 kubeadm_control_plane_enabled: true
+kubeadm_upload_certs: true
+kubeadm_config_path: /root/kubeadm-config.yaml
+kubeconfig_root_path: /root/.kube/config
+kubeadm_admin_conf_path: /etc/kubernetes/admin.conf
+kubeadm_root_kube_dir: /root/.kube
+kubeadm_join_token_ttl: 2h
+kubeadm_config_api_version: kubeadm.k8s.io/v1beta4
+kubeadm_kubelet_config_api_version: kubelet.config.k8s.io/v1beta1
