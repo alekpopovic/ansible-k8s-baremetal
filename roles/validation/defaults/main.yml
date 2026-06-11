@@ -1,2 +1,14 @@
 ---
 validation_enabled: true
+kubeconfig_path: /etc/kubernetes/admin.conf
+validation_node_ready_timeout: 300s
+
+validation_create_test_workload: false
+validation_cleanup_test_workload: true
+validation_test_namespace: k8s-validation
+validation_test_app: validation-nginx
+validation_test_image: nginx:stable-alpine
+validation_test_replicas: 1
+validation_clusterip_service_name: validation-nginx
+validation_loadbalancer_service_name: validation-nginx-lb
+validation_loadbalancer_timeout: 180
