@@ -1,61 +1,152 @@
 # Architecture
 
-This repository supports kubeadm-based Kubernetes on bare-metal hosts with a
-single control plane or an optional highly available API endpoint.
+This repository deploys Kubernetes on bare-metal Linux hosts with Ansible and
+kubeadm. It uses containerd as the runtime, Calico as the CNI, and optional
+MetalLB and ingress-nginx for service exposure.
 
-## Inventory Groups
+## Topologies
 
-- `kube_control_plane`: Kubernetes control-plane nodes.
-- `kube_workers`: Kubernetes worker nodes.
-- `kube_cluster`: Ansible child group containing control-plane and worker nodes.
-- `lb_nodes`: Optional HAProxy/Keepalived nodes for the Kubernetes API VIP.
+### Single Control Plane
 
-`lb_nodes` are configured by a separate play before Kubernetes bootstrap. They
-do not need to be members of `kube_cluster`.
+Use one host in `kube_control_plane` and one or more hosts in `kube_workers`.
 
-## Single Control Plane
+```ini
+[kube_control_plane]
+cp-01 ansible_host=10.0.0.11
 
-For a single control-plane deployment, set:
+[kube_workers]
+worker-01 ansible_host=10.0.0.21
+worker-02 ansible_host=10.0.0.22
+```
+
+Set the control-plane endpoint directly to the control-plane node:
 
 ```yaml
 ha_api_enabled: false
-control_plane_endpoint: "192.0.2.11:6443"
+control_plane_endpoint: "10.0.0.11:6443"
 ```
 
-The control-plane endpoint can point directly at the first control-plane node.
+### HA Control Plane
 
-## HA API Endpoint
+Use three or more control-plane nodes when possible:
 
-For HA layouts, enable HAProxy and Keepalived on `lb_nodes`:
+```ini
+[kube_control_plane]
+cp-01 ansible_host=10.0.0.11
+cp-02 ansible_host=10.0.0.12
+cp-03 ansible_host=10.0.0.13
+```
+
+Set `control_plane_endpoint` to a stable address, usually a VIP or DNS name:
+
+```yaml
+control_plane_endpoint: "10.0.0.10:6443"
+```
+
+Additional control-plane joins should be run serially. Avoid joining multiple
+new control-plane nodes at exactly the same time.
+
+### Optional External LB/VIP
+
+Add `lb_nodes` when using the repository's HAProxy and Keepalived roles:
+
+```ini
+[lb_nodes]
+lb-01 ansible_host=10.0.0.10
+lb-02 ansible_host=10.0.0.9
+```
+
+Enable the HA API endpoint in inventory-wide vars:
 
 ```yaml
 ha_api_enabled: true
-k8s_api_vip: "192.0.2.10"
+k8s_api_vip: "10.0.0.10"
 k8s_api_vip_interface: eth0
 k8s_api_port: 6443
-control_plane_endpoint: "192.0.2.10:6443"
+control_plane_endpoint: "10.0.0.10:6443"
 keepalived_virtual_router_id: 51
 keepalived_auth_pass: "{{ vault_keepalived_auth_pass }}"
 ```
 
-HAProxy listens on the Kubernetes API VIP and forwards TCP traffic to every host
-in `kube_control_plane` on port `6443`. Keepalived advertises the VIP with VRRP
-and tracks the HAProxy process.
+`keepalived_auth_pass` must be stored in Ansible Vault or another secret source.
+Do not commit the plaintext value.
 
-`keepalived_auth_pass` must be provided from Ansible Vault or another secret
-source. Do not commit the plaintext value.
+## Inventory Groups
 
-## Bootstrap Order
+- `kube_control_plane`: Kubernetes API server, controller-manager, scheduler,
+  and etcd nodes.
+- `kube_workers`: Kubernetes worker nodes.
+- `kube_cluster`: child group containing `kube_control_plane` and
+  `kube_workers`.
+- `lb_nodes`: optional HAProxy/Keepalived nodes for the Kubernetes API VIP.
 
-1. Configure optional HA API endpoint on `lb_nodes`.
-2. Prepare Kubernetes nodes.
-3. Install containerd.
-4. Install Kubernetes packages.
-5. Initialize or join control-plane nodes.
-6. Join workers.
-7. Install Calico.
-8. Optionally install MetalLB.
-9. Optionally install ingress-nginx.
+`lb_nodes` are intentionally separate from `kube_cluster`.
 
-When `ha_api_enabled: true`, the VIP must be reachable before kubeadm
-initializes the first control-plane node.
+## Network Requirements
+
+All nodes must have stable hostnames, stable IPs, and reliable node-to-node
+connectivity.
+
+Required traffic:
+
+| Purpose | Ports |
+| --- | --- |
+| SSH from Ansible control node | TCP 22 |
+| Kubernetes API | TCP 6443 |
+| etcd client and peer traffic | TCP 2379-2380 |
+| kubelet API | TCP 10250 |
+| kube-controller-manager | TCP 10257 |
+| kube-scheduler | TCP 10259 |
+| NodePort Services | TCP/UDP 30000-32767 |
+| Calico VXLAN | UDP 4789 |
+| Calico BGP, if enabled | TCP 179 |
+| Keepalived VRRP | IP protocol 112 |
+| HAProxy stats, if enabled | TCP 8404 by default |
+
+CIDR planning:
+
+- `pod_cidr` must not overlap node networks, service networks, or VPN ranges.
+- `service_cidr` must not overlap node networks or pod networks.
+- `metallb_address_pool` must contain free LAN IPs outside DHCP scopes.
+- `k8s_api_vip` must be free and reachable on `k8s_api_vip_interface`.
+
+## Bootstrap Flow
+
+The playbook order is:
+
+1. Validate optional HA API endpoint inventory.
+2. Configure HAProxy and Keepalived on `lb_nodes` when `ha_api_enabled=true`.
+3. Run preflight checks on Kubernetes nodes.
+4. Prepare OS settings.
+5. Install containerd.
+6. Install Kubernetes packages.
+7. Initialize the first control-plane node.
+8. Join additional control-plane nodes.
+9. Join workers.
+10. Install Calico.
+11. Optionally install MetalLB.
+12. Optionally install ingress-nginx.
+13. Run validation.
+
+## Important Variables
+
+```yaml
+k8s_minor: "1.30"
+k8s_version: "1.30.0"
+pod_cidr: "192.168.0.0/16"
+service_cidr: "10.96.0.0/12"
+cluster_dns_domain: cluster.local
+control_plane_endpoint: "10.0.0.10:6443"
+cri_socket: "unix:///run/containerd/containerd.sock"
+calico_version: "v3.28.0"
+calico_encapsulation: VXLAN
+metallb_enabled: false
+ingress_nginx_enabled: false
+```
+
+Optional smoke validation:
+
+```yaml
+validation_create_test_workload: true
+validation_cleanup_test_workload: true
+```

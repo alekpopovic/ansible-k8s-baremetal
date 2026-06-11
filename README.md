@@ -1,42 +1,102 @@
 # ansible-k8s-baremetal
 
 An Ansible-based bootstrap repository for Kubernetes on bare-metal hosts using
-`kubeadm`, `kubelet`, `kubectl`, and `containerd`.
+`kubeadm`, `kubelet`, `kubectl`, `containerd`, Calico, optional MetalLB,
+optional ingress-nginx, and optional HAProxy/Keepalived for a highly available
+Kubernetes API endpoint.
 
-The project is intentionally conservative: tasks should be idempotent, major
+The project is intentionally conservative: tasks should be idempotent, cluster
 settings should live in inventory variables, and destructive operations should
-require explicit opt-in variables.
+require explicit operator action.
 
-## Goal
+## Supported Topologies
 
-Provide a clean, repeatable Kubernetes deployment flow for lab and production
-bare-metal environments. The repository will support operating system
-preparation, container runtime setup, Kubernetes package installation,
-control-plane bootstrap, worker joins, Calico CNI, optional MetalLB, optional
-ingress-nginx, and validation.
-
-## Supported Topology
-
-- Single control-plane cluster.
-- HA control-plane cluster with an explicit `control_plane_endpoint`.
-- Optional external or in-cluster load balancer nodes through `lb_nodes`.
-- Worker nodes joined through kubeadm.
-- Calico as the default CNI.
-- Optional MetalLB for bare-metal `LoadBalancer` services.
+- Single control-plane node plus workers.
+- HA control-plane nodes plus workers.
+- Optional external load balancer nodes in `lb_nodes` using HAProxy and
+  Keepalived with a shared VIP.
+- Calico CNI.
+- Optional MetalLB for bare-metal `LoadBalancer` Services.
 - Optional ingress-nginx.
 
-Target operating systems are Ubuntu 22.04, Ubuntu 24.04, and Debian 12 where
-practical.
+Supported target operating systems are Ubuntu 22.04, Ubuntu 24.04, and Debian
+12 where practical.
 
-## Prerequisites
+## Inventory
 
-- Ansible installed on the control machine.
-- SSH access from the control machine to all target nodes.
-- Passwordless privilege escalation or a documented become password flow.
-- Supported Linux distribution on each target node.
-- Stable node hostnames and IP addresses.
-- Kernel, firewall, and network settings reviewed for Kubernetes.
-- A non-overlapping pod CIDR, service CIDR, and MetalLB address pool.
+Start from the production examples:
+
+```bash
+cp inventories/production/hosts.ini.example inventories/production/hosts.ini
+cp inventories/production/group_vars/all.yml.example \
+  inventories/production/group_vars/all.yml
+cp inventories/production/group_vars/kube_cluster.yml.example \
+  inventories/production/group_vars/kube_cluster.yml
+```
+
+Required groups:
+
+```ini
+[kube_control_plane]
+cp-01 ansible_host=10.0.0.11
+
+[kube_workers]
+worker-01 ansible_host=10.0.0.21
+
+[lb_nodes]
+# lb-01 ansible_host=10.0.0.10
+
+[kube_cluster:children]
+kube_control_plane
+kube_workers
+```
+
+Core variables:
+
+```yaml
+k8s_minor: "1.30"
+k8s_version: "1.30.0"
+pod_cidr: "192.168.0.0/16"
+service_cidr: "10.96.0.0/12"
+cluster_dns_domain: cluster.local
+control_plane_endpoint: "10.0.0.10:6443"
+cri_socket: "unix:///run/containerd/containerd.sock"
+calico_version: "v3.28.0"
+```
+
+For HA API endpoint support:
+
+```yaml
+ha_api_enabled: true
+k8s_api_vip: "10.0.0.10"
+k8s_api_vip_interface: eth0
+k8s_api_port: 6443
+control_plane_endpoint: "10.0.0.10:6443"
+keepalived_auth_pass: "{{ vault_keepalived_auth_pass }}"
+```
+
+`keepalived_auth_pass` must come from Ansible Vault or another secret source.
+Never commit the plaintext value.
+
+## Network Requirements
+
+At minimum, allow:
+
+- SSH from the Ansible control machine to all managed hosts.
+- Kubernetes API: TCP `6443` to the control-plane endpoint.
+- etcd between control-plane nodes: TCP `2379-2380`.
+- kubelet API: TCP `10250`.
+- kube-controller-manager and scheduler on control-plane nodes: TCP `10257` and
+  `10259`.
+- NodePort Services when used: TCP/UDP `30000-32767`.
+- Calico traffic according to the selected mode. VXLAN commonly uses UDP
+  `4789`; BGP mode uses TCP `179`.
+- VRRP between `lb_nodes` when Keepalived is enabled.
+
+All Kubernetes nodes need stable node-to-node connectivity. Pod CIDR, service
+CIDR, node IPs, VIPs, and MetalLB pools must not overlap.
+
+## Local Tooling
 
 Install required collections:
 
@@ -44,87 +104,101 @@ Install required collections:
 ansible-galaxy collection install -r requirements.yml
 ```
 
-Install local validation tools when they are not already available:
+Install local validation tools when needed:
 
 ```bash
 python -m pip install ansible-core ansible-lint yamllint
 ```
 
-## Quick Start
-
-Review and edit the lab inventory:
-
-```bash
-cp inventories/production/hosts.ini.example inventories/production/hosts.ini
-cp inventories/production/group_vars/kube_cluster.yml.example \
-  inventories/production/group_vars/kube_cluster.yml
-```
-
-For the default lab inventory, update:
-
-```text
-inventories/lab/hosts.ini
-inventories/lab/group_vars/kube_cluster.yml
-```
-
-Run a syntax check:
-
-```bash
-scripts/syntax-check.sh
-```
-
-Run static validation:
+Run validation:
 
 ```bash
 scripts/lint.sh
+scripts/syntax-check.sh
 ```
 
-The local validation commands run the same checks as CI:
+The syntax check does not SSH to hosts or run tasks:
 
 ```bash
-yamllint .
-ansible-lint .
 ansible-playbook -i inventories/lab/hosts.ini site.yml --syntax-check
 ```
 
-Preview where possible:
+## Bootstrap
+
+Check SSH and privilege escalation:
 
 ```bash
-ansible-playbook site.yml --check --diff
+ansible all -i inventories/lab/hosts.ini -m ping
 ```
 
-Apply the playbook only after reviewing inventory values and safety notes:
+Run the full playbook:
 
 ```bash
-ansible-playbook site.yml
+ansible-playbook -i inventories/lab/hosts.ini site.yml
 ```
 
-## Local Validation
-
-Run static checks:
+Run selected phases by tag:
 
 ```bash
-scripts/lint.sh
+ansible-playbook -i inventories/lab/hosts.ini site.yml --tags preflight
+ansible-playbook -i inventories/lab/hosts.ini site.yml --tags os,containerd
+ansible-playbook -i inventories/lab/hosts.ini site.yml --tags kubernetes
+ansible-playbook -i inventories/lab/hosts.ini site.yml --tags control-plane
+ansible-playbook -i inventories/lab/hosts.ini site.yml --tags workers,cni
+ansible-playbook -i inventories/lab/hosts.ini site.yml --tags metallb,ingress
+ansible-playbook -i inventories/lab/hosts.ini site.yml --tags validation
 ```
 
-Run the Ansible syntax check:
+## Kubeconfig
+
+After bootstrap, retrieve the admin kubeconfig from the first control-plane
+node:
 
 ```bash
-scripts/syntax-check.sh
+scp root@cp-01:/etc/kubernetes/admin.conf ./admin.conf
+chmod 600 ./admin.conf
+export KUBECONFIG="$PWD/admin.conf"
+kubectl get nodes -o wide
 ```
 
-The syntax check uses `inventories/lab/hosts.ini` and does not connect to target
-hosts or run tasks. CI runs the same checks on every push and pull request.
+Do not commit kubeconfig files.
+
+## Common Add-Ons
+
+Enable MetalLB:
+
+```yaml
+metallb_enabled: true
+metallb_address_pool:
+  - "10.0.0.240-10.0.0.250"
+```
+
+The selected addresses must be free on the LAN and outside DHCP scopes.
+
+Enable ingress-nginx:
+
+```yaml
+ingress_nginx_enabled: true
+ingress_nginx_service_type: LoadBalancer
+```
+
+On bare metal, `LoadBalancer` requires MetalLB or another load balancer
+implementation. Use `NodePort` if you are not enabling MetalLB.
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Operations](docs/operations.md)
+- [Upgrade](docs/upgrade.md)
+- [Backup And Restore](docs/backup-restore.md)
+- [Troubleshooting](docs/troubleshooting.md)
 
 ## Safety Notes
 
-- Do not commit secrets, kubeconfig contents, join tokens, certificate keys,
-  private SSH keys, or passwords.
-- Use Ansible Vault placeholders for secret material.
-- Do not run destructive actions unless the related opt-in variable is clearly
-  enabled and documented.
-- `kubeadm reset` must never run automatically.
-- Check mode may be limited for kubeadm, package repository setup, CNI
-  application, and tasks that depend on live cluster state.
-- Review `docs/operations.md` and `docs/troubleshooting.md` as operational
-  content is added.
+- Do not commit tokens, certificate keys, kubeconfig contents, passwords,
+  private SSH keys, or plaintext secrets.
+- Use Ansible Vault placeholders for secrets.
+- Do not run `kubeadm reset` automatically.
+- Back up etcd and important workloads before upgrades or destructive work.
+- Treat node replacement, control-plane replacement, and manual etcd recovery as
+  high-risk operations.
