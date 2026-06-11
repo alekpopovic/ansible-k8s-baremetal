@@ -1,0 +1,11 @@
+---
+ha_api_enabled: false
+k8s_api_port: 6443
+haproxy_k8s_api_bind_address: "*"
+haproxy_k8s_api_config_path: /etc/haproxy/haproxy.cfg
+haproxy_k8s_api_package: haproxy
+haproxy_k8s_api_service: haproxy
+haproxy_stats_enabled: false
+haproxy_stats_port: 8404
+haproxy_stats_uri: /stats
+haproxy_stats_refresh: 10s

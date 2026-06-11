@@ -1,0 +1,10 @@
+---
+ha_api_enabled: false
+k8s_api_vip: "10.0.0.10"
+k8s_api_vip_interface: eth0
+k8s_api_port: 6443
+keepalived_virtual_router_id: 51
+# keepalived_auth_pass must come from Ansible Vault when ha_api_enabled=true.
+# keepalived_auth_pass: "{{ vault_keepalived_auth_pass }}"
+haproxy_stats_enabled: false
+haproxy_stats_port: 8404

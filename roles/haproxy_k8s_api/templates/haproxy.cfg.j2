@@ -1,0 +1,38 @@
+global
+  log /dev/log local0
+  log /dev/log local1 notice
+  daemon
+  maxconn 2048
+
+defaults
+  log global
+  mode tcp
+  option tcplog
+  option dontlognull
+  timeout connect 5s
+  timeout client 50s
+  timeout server 50s
+
+frontend kubernetes_api
+  bind {{ haproxy_k8s_api_bind_address }}:{{ k8s_api_port }}
+  mode tcp
+  default_backend kubernetes_api_backend
+
+backend kubernetes_api_backend
+  mode tcp
+  balance roundrobin
+  option tcp-check
+{% for host in groups.get('kube_control_plane', []) %}
+{% set address = hostvars[host].ansible_host
+  | default(hostvars[host].ansible_default_ipv4.address | default(host)) %}
+  server {{ host }} {{ address }}:{{ k8s_api_port }} check
+{% endfor %}
+{% if haproxy_stats_enabled | bool %}
+
+listen stats
+  bind *:{{ haproxy_stats_port }}
+  mode http
+  stats enable
+  stats uri {{ haproxy_stats_uri }}
+  stats refresh {{ haproxy_stats_refresh }}
+{% endif %}

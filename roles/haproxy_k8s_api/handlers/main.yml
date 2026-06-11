@@ -1,0 +1,5 @@
+---
+- name: Restart haproxy
+  ansible.builtin.systemd_service:
+    name: "{{ haproxy_k8s_api_service }}"
+    state: restarted

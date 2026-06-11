@@ -1,0 +1,116 @@
+---
+- name: Report HA API VIP disabled
+  ansible.builtin.debug:
+    msg: "HA API endpoint is disabled; skipping Keepalived VIP configuration."
+  changed_when: false
+  when: not ha_api_enabled | bool
+  tags:
+    - control-plane
+    - keepalived
+
+- name: Assert Keepalived prerequisites are defined
+  ansible.builtin.assert:
+    that:
+      - groups.get('lb_nodes', []) | length > 0
+      - k8s_api_vip is defined
+      - k8s_api_vip | string | length > 0
+      - k8s_api_vip_interface is defined
+      - k8s_api_vip_interface | string | length > 0
+    fail_msg: >-
+      ha_api_enabled=true requires lb_nodes, k8s_api_vip, and
+      k8s_api_vip_interface.
+    success_msg: "Keepalived prerequisites are defined."
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - keepalived
+
+- name: Assert Keepalived auth secret is provided
+  ansible.builtin.assert:
+    that:
+      - keepalived_auth_pass is defined
+      - keepalived_auth_pass | string | length > 0
+      - keepalived_auth_pass | string | length <= 8
+    fail_msg: >-
+      ha_api_enabled=true requires keepalived_auth_pass from Ansible Vault.
+      Keepalived VRRP PASS authentication supports up to 8 characters.
+    success_msg: "Keepalived auth secret is provided."
+  no_log: true
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - keepalived
+
+- name: Set Keepalived priority fact
+  ansible.builtin.set_fact:
+    keepalived_vip_priority: >-
+      {{
+        keepalived_priority
+        | default(
+            keepalived_base_priority
+            - (
+                groups.get('lb_nodes', []).index(inventory_hostname)
+                * keepalived_priority_step
+              )
+          )
+      }}
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - keepalived
+
+- name: Install Keepalived
+  ansible.builtin.apt:
+    name: "{{ keepalived_package }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - keepalived
+
+- name: Template Keepalived VIP configuration
+  ansible.builtin.template:
+    src: keepalived.conf.j2
+    dest: "{{ keepalived_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart keepalived
+  no_log: true
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - keepalived
+
+- name: Validate Keepalived configuration
+  ansible.builtin.command:
+    cmd: "keepalived -t -f {{ keepalived_config_path }}"
+  changed_when: false
+  register: keepalived_config_test
+  failed_when: keepalived_config_test.rc != 0
+  no_log: true
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - keepalived
+
+- name: Enable and start Keepalived
+  ansible.builtin.systemd_service:
+    name: "{{ keepalived_service }}"
+    enabled: true
+    state: started
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - keepalived
+
+- name: Validate Keepalived service is active
+  ansible.builtin.command:
+    cmd: "systemctl is-active {{ keepalived_service }}"
+  changed_when: false
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - keepalived

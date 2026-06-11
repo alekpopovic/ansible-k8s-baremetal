@@ -1,0 +1,82 @@
+---
+- name: Report HA API endpoint disabled
+  ansible.builtin.debug:
+    msg: "HA API endpoint is disabled; skipping HAProxy configuration."
+  changed_when: false
+  when: not ha_api_enabled | bool
+  tags:
+    - control-plane
+    - haproxy
+
+- name: Assert HAProxy prerequisites are defined
+  ansible.builtin.assert:
+    that:
+      - groups.get('lb_nodes', []) | length > 0
+      - groups.get('kube_control_plane', []) | length > 0
+      - k8s_api_vip is defined
+      - k8s_api_vip | string | length > 0
+      - k8s_api_vip_interface is defined
+      - k8s_api_vip_interface | string | length > 0
+      - k8s_api_port is defined
+      - k8s_api_port | int > 0
+    fail_msg: >-
+      ha_api_enabled=true requires lb_nodes, kube_control_plane, k8s_api_vip,
+      k8s_api_vip_interface, and k8s_api_port.
+    success_msg: "HAProxy prerequisites are defined."
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - haproxy
+
+- name: Install HAProxy
+  ansible.builtin.apt:
+    name: "{{ haproxy_k8s_api_package }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - haproxy
+
+- name: Template HAProxy Kubernetes API configuration
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: "{{ haproxy_k8s_api_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "haproxy -c -f %s"
+  notify: Restart haproxy
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - haproxy
+
+- name: Enable and start HAProxy
+  ansible.builtin.systemd_service:
+    name: "{{ haproxy_k8s_api_service }}"
+    enabled: true
+    state: started
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - haproxy
+
+- name: Validate HAProxy configuration
+  ansible.builtin.command:
+    cmd: "haproxy -c -f {{ haproxy_k8s_api_config_path }}"
+  changed_when: false
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - haproxy
+
+- name: Validate HAProxy service is active
+  ansible.builtin.command:
+    cmd: "systemctl is-active {{ haproxy_k8s_api_service }}"
+  changed_when: false
+  when: ha_api_enabled | bool
+  tags:
+    - control-plane
+    - haproxy

@@ -1,0 +1,32 @@
+global_defs {
+  enable_script_security
+  script_user root
+}
+
+vrrp_script chk_haproxy {
+  script "pidof haproxy"
+  interval 2
+  fall 2
+  rise 2
+}
+
+vrrp_instance VI_K8S_API {
+  state BACKUP
+  interface {{ k8s_api_vip_interface }}
+  virtual_router_id {{ keepalived_virtual_router_id }}
+  priority {{ keepalived_vip_priority }}
+  advert_int {{ keepalived_advert_int }}
+
+  authentication {
+    auth_type {{ keepalived_auth_type }}
+    auth_pass {{ keepalived_auth_pass }}
+  }
+
+  virtual_ipaddress {
+    {{ k8s_api_vip }}
+  }
+
+  track_script {
+    chk_haproxy
+  }
+}

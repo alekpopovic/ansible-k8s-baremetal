@@ -1,4 +1,58 @@
 ---
+- name: Validate optional HA Kubernetes API endpoint inventory
+  hosts: all
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Assert HA API inventory variables are defined when enabled
+      ansible.builtin.assert:
+        that:
+          - groups.get('lb_nodes', []) | length > 0
+          - k8s_api_vip is defined
+          - k8s_api_vip | string | length > 0
+          - k8s_api_vip_interface is defined
+          - k8s_api_vip_interface | string | length > 0
+        fail_msg: >-
+          ha_api_enabled=true requires at least one lb_nodes host,
+          k8s_api_vip, and k8s_api_vip_interface.
+        success_msg: "HA API inventory variables are defined."
+      run_once: true
+      when: ha_api_enabled | default(false) | bool
+      tags:
+        - control-plane
+        - haproxy
+        - keepalived
+
+    - name: Assert Keepalived auth secret is provided when HA API is enabled
+      ansible.builtin.assert:
+        that:
+          - keepalived_auth_pass is defined
+          - keepalived_auth_pass | string | length > 0
+          - keepalived_auth_pass | string | length <= 8
+        fail_msg: >-
+          ha_api_enabled=true requires keepalived_auth_pass from Ansible Vault.
+        success_msg: "Keepalived auth secret is provided."
+      no_log: true
+      run_once: true
+      when: ha_api_enabled | default(false) | bool
+      tags:
+        - control-plane
+        - keepalived
+
+- name: Configure optional HA Kubernetes API endpoint
+  hosts: lb_nodes
+  gather_facts: true
+  become: true
+  roles:
+    - role: haproxy_k8s_api
+      tags:
+        - control-plane
+        - haproxy
+    - role: keepalived_vip
+      tags:
+        - control-plane
+        - keepalived
+
 - name: Bootstrap Kubernetes bare-metal cluster
   hosts: kube_cluster
   gather_facts: true
