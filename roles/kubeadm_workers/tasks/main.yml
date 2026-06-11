@@ -1,0 +1,6 @@
+---
+- name: Kubeadm workers placeholder
+  ansible.builtin.debug:
+    msg: "Worker node join is not implemented yet."
+  changed_when: false
+  when: kubeadm_workers_enabled

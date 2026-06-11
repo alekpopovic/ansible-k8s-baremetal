@@ -1,0 +1,8 @@
+---
+- name: MetalLB placeholder
+  ansible.builtin.debug:
+    msg: "MetalLB installation is not implemented yet."
+  changed_when: false
+  when:
+    - metallb_role_enabled
+    - metallb_enabled

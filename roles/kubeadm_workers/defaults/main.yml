@@ -1,0 +1,2 @@
+---
+kubeadm_workers_enabled: true

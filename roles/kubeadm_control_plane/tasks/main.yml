@@ -1,0 +1,6 @@
+---
+- name: Kubeadm control plane placeholder
+  ansible.builtin.debug:
+    msg: "Control-plane bootstrap is not implemented yet."
+  changed_when: false
+  when: kubeadm_control_plane_enabled

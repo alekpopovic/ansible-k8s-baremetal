@@ -1,0 +1,6 @@
+---
+- name: Containerd placeholder
+  ansible.builtin.debug:
+    msg: "Containerd installation is not implemented yet."
+  changed_when: false
+  when: containerd_enabled

@@ -1,0 +1,6 @@
+---
+- name: Validation placeholder
+  ansible.builtin.debug:
+    msg: "Cluster validation is not implemented yet."
+  changed_when: false
+  when: validation_enabled

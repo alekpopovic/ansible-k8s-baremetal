@@ -1,0 +1,6 @@
+---
+- name: OS base placeholder
+  ansible.builtin.debug:
+    msg: "OS base configuration is not implemented yet."
+  changed_when: false
+  when: os_base_enabled

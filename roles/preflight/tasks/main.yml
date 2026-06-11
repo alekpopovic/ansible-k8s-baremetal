@@ -1,0 +1,6 @@
+---
+- name: Preflight placeholder
+  ansible.builtin.debug:
+    msg: "Preflight checks are not implemented yet."
+  changed_when: false
+  when: preflight_enabled

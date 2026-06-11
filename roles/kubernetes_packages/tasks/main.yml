@@ -1,0 +1,6 @@
+---
+- name: Kubernetes packages placeholder
+  ansible.builtin.debug:
+    msg: "Kubernetes package installation is not implemented yet."
+  changed_when: false
+  when: kubernetes_packages_enabled

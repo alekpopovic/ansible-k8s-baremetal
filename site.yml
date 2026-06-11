@@ -1,0 +1,36 @@
+---
+- name: Bootstrap Kubernetes bare-metal cluster
+  hosts: kube_cluster
+  gather_facts: true
+  become: true
+  roles:
+    - role: preflight
+      tags:
+        - preflight
+    - role: os_base
+      tags:
+        - os
+    - role: containerd
+      tags:
+        - containerd
+    - role: kubernetes_packages
+      tags:
+        - kubernetes
+    - role: kubeadm_control_plane
+      tags:
+        - control-plane
+    - role: kubeadm_workers
+      tags:
+        - workers
+    - role: cni_calico
+      tags:
+        - cni
+    - role: metallb
+      tags:
+        - metallb
+    - role: ingress_nginx
+      tags:
+        - ingress
+    - role: validation
+      tags:
+        - validation

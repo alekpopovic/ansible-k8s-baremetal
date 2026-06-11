@@ -1,0 +1,16 @@
+[kube_control_plane]
+cp-01 ansible_host=10.0.0.11
+# cp-02 ansible_host=10.0.0.12
+# cp-03 ansible_host=10.0.0.13
+
+[kube_workers]
+worker-01 ansible_host=10.0.0.21
+worker-02 ansible_host=10.0.0.22
+
+[lb_nodes]
+# lb-01 ansible_host=10.0.0.10
+# lb-02 ansible_host=10.0.0.9
+
+[kube_cluster:children]
+kube_control_plane
+kube_workers

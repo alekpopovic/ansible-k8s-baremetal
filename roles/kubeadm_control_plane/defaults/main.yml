@@ -1,0 +1,2 @@
+---
+kubeadm_control_plane_enabled: true

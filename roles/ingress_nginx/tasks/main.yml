@@ -1,0 +1,8 @@
+---
+- name: Ingress-nginx placeholder
+  ansible.builtin.debug:
+    msg: "ingress-nginx installation is not implemented yet."
+  changed_when: false
+  when:
+    - ingress_nginx_role_enabled
+    - ingress_nginx_enabled

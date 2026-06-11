@@ -1,0 +1,6 @@
+---
+- name: Calico placeholder
+  ansible.builtin.debug:
+    msg: "Calico installation is not implemented yet."
+  changed_when: false
+  when: cni_calico_enabled
