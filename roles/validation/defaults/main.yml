@@ -12,3 +12,10 @@ validation_test_replicas: 1
 validation_clusterip_service_name: validation-nginx
 validation_loadbalancer_service_name: validation-nginx-lb
 validation_loadbalancer_timeout: 180
+
+pod_security_admission_labels_enabled: false
+pod_security_admission_namespaces: []
+pod_security_admission_enforce: baseline
+pod_security_admission_audit: restricted
+pod_security_admission_warn: restricted
+pod_security_admission_version: latest

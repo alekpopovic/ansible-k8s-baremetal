@@ -117,6 +117,28 @@
   tags:
     - validation
 
+- name: Apply Pod Security Admission labels
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      label namespace {{ item }}
+      pod-security.kubernetes.io/enforce={{ pod_security_admission_enforce }}
+      pod-security.kubernetes.io/audit={{ pod_security_admission_audit }}
+      pod-security.kubernetes.io/warn={{ pod_security_admission_warn }}
+      pod-security.kubernetes.io/enforce-version={{ pod_security_admission_version }}
+      pod-security.kubernetes.io/audit-version={{ pod_security_admission_version }}
+      pod-security.kubernetes.io/warn-version={{ pod_security_admission_version }}
+      --overwrite
+  loop: "{{ pod_security_admission_namespaces }}"
+  register: validation_psa_label
+  changed_when: "'not labeled' not in validation_psa_label.stdout"
+  when:
+    - validation_enabled | bool
+    - validation_is_first_control_plane | bool
+    - pod_security_admission_labels_enabled | bool
+  tags:
+    - validation
+
 - name: Create validation namespace
   ansible.builtin.command:
     cmd: >-

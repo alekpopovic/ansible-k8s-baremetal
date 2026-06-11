@@ -49,6 +49,22 @@ validation_loadbalancer_service_name: validation-nginx-lb
 validation_loadbalancer_timeout: 180
 ```
 
+## Optional Pod Security Admission Labels
+
+Set `pod_security_admission_labels_enabled: true` to label selected namespaces.
+This is disabled by default because stricter labels can break workloads that are
+not prepared for them.
+
+```yaml
+pod_security_admission_labels_enabled: true
+pod_security_admission_namespaces:
+  - default
+pod_security_admission_enforce: baseline
+pod_security_admission_audit: restricted
+pod_security_admission_warn: restricted
+pod_security_admission_version: latest
+```
+
 ## Tags
 
 - `validation`

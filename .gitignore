@@ -1,0 +1,32 @@
+# Generated kubeconfig and cluster credentials
+admin.conf
+kubeconfig
+*.kubeconfig
+*.conf.kubeconfig
+
+# Kubernetes bootstrap secrets and certificates
+*join-command*
+*certificate-key*
+*.crt
+*.csr
+*.key
+*.pem
+pki/
+
+# SSH keys
+id_rsa
+id_ed25519
+*.pub
+
+# Ansible Vault password files and local secret material
+.vault_pass
+.vault-password
+vault-password*
+*secrets*.yml
+*secrets*.yaml
+!*.example
+
+# Local Ansible/runtime output
+*.retry
+.ansible/
+__pycache__/

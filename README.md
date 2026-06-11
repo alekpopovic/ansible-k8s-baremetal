@@ -191,6 +191,7 @@ implementation. Use `NodePort` if you are not enabling MetalLB.
 - [Operations](docs/operations.md)
 - [Upgrade](docs/upgrade.md)
 - [Backup And Restore](docs/backup-restore.md)
+- [Security](docs/security.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
 ## Safety Notes

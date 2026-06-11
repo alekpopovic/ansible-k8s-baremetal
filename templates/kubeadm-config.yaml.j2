@@ -22,6 +22,30 @@ apiServer:
     - "{{ ansible_hostname }}"
     - "{{ kubeadm_node_advertise_address }}"
     - "{{ kubeadm_control_plane_endpoint_host }}"
+{% if kubeadm_audit_policy_enabled | bool %}
+  extraArgs:
+    - name: audit-policy-file
+      value: "{{ kubeadm_audit_policy_path }}"
+    - name: audit-log-path
+      value: "{{ kubeadm_audit_log_path }}"
+    - name: audit-log-maxage
+      value: "{{ kubeadm_audit_log_maxage }}"
+    - name: audit-log-maxbackup
+      value: "{{ kubeadm_audit_log_maxbackup }}"
+    - name: audit-log-maxsize
+      value: "{{ kubeadm_audit_log_maxsize }}"
+  extraVolumes:
+    - name: audit-policy
+      hostPath: "{{ kubeadm_audit_policy_path }}"
+      mountPath: "{{ kubeadm_audit_policy_path }}"
+      readOnly: true
+      pathType: File
+    - name: audit-log
+      hostPath: "{{ kubeadm_audit_log_dir }}"
+      mountPath: "{{ kubeadm_audit_log_dir }}"
+      readOnly: false
+      pathType: DirectoryOrCreate
+{% endif %}
 ---
 apiVersion: {{ kubeadm_kubelet_config_api_version }}
 kind: KubeletConfiguration

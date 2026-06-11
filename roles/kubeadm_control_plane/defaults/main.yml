@@ -8,3 +8,11 @@ kubeadm_root_kube_dir: /root/.kube
 kubeadm_join_token_ttl: 2h
 kubeadm_config_api_version: kubeadm.k8s.io/v1beta4
 kubeadm_kubelet_config_api_version: kubelet.config.k8s.io/v1beta1
+
+kubeadm_audit_policy_enabled: false
+kubeadm_audit_policy_path: /etc/kubernetes/audit-policy.yaml
+kubeadm_audit_log_path: /var/log/kubernetes/audit.log
+kubeadm_audit_log_dir: /var/log/kubernetes
+kubeadm_audit_log_maxage: 30
+kubeadm_audit_log_maxbackup: 10
+kubeadm_audit_log_maxsize: 100

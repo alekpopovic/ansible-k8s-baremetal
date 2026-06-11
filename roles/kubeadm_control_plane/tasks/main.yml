@@ -78,6 +78,34 @@
     - control-plane
     - kubeadm
 
+- name: Create Kubernetes audit log directory
+  ansible.builtin.file:
+    path: "{{ kubeadm_audit_log_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when:
+    - kubeadm_is_control_plane | bool
+    - kubeadm_audit_policy_enabled | bool
+  tags:
+    - control-plane
+    - kubeadm
+
+- name: Render Kubernetes audit policy
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/audit-policy.yaml.j2"
+    dest: "{{ kubeadm_audit_policy_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - kubeadm_is_control_plane | bool
+    - kubeadm_audit_policy_enabled | bool
+  tags:
+    - control-plane
+    - kubeadm
+
 - name: Check control-plane initialization state
   ansible.builtin.stat:
     path: "{{ kubeadm_admin_conf_path }}"

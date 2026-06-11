@@ -49,6 +49,9 @@ kubeadm_root_kube_dir: /root/.kube
 kubeadm_join_token_ttl: 2h
 kubeadm_config_api_version: kubeadm.k8s.io/v1beta4
 kubeadm_kubelet_config_api_version: kubelet.config.k8s.io/v1beta1
+kubeadm_audit_policy_enabled: false
+kubeadm_audit_policy_path: /etc/kubernetes/audit-policy.yaml
+kubeadm_audit_log_path: /var/log/kubernetes/audit.log
 ```
 
 ## HA Notes
@@ -76,6 +79,19 @@ Worker join roles should read the join command from:
 ```yaml
 hostvars[groups['kube_control_plane'][0]].kubeadm_worker_join_command
 ```
+
+## Optional API Audit Policy
+
+Set `kubeadm_audit_policy_enabled: true` before the first `kubeadm init` to
+render an audit policy and mount it into the kube-apiserver static pod through
+the kubeadm configuration.
+
+```yaml
+kubeadm_audit_policy_enabled: true
+```
+
+Changing audit settings on an existing cluster requires careful manual review of
+the kube-apiserver static pod configuration.
 
 ## Tags
 
