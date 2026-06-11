@@ -1,2 +1,4 @@
 ---
 kubeadm_workers_enabled: true
+kubeadm_worker_kubelet_conf_path: /etc/kubernetes/kubelet.conf
+kubeadm_worker_kubelet_service_name: kubelet

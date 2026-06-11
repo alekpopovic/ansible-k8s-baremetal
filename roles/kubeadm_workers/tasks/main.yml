@@ -1,6 +1,107 @@
 ---
-- name: Kubeadm workers placeholder
-  ansible.builtin.debug:
-    msg: "Worker node join is not implemented yet."
+- name: Assert kubeadm workers role is enabled
+  ansible.builtin.assert:
+    that:
+      - kubeadm_workers_enabled | bool
+    fail_msg: >-
+      The kubeadm_workers role is disabled. Set kubeadm_workers_enabled=true
+      to run it.
+    success_msg: "kubeadm workers role is enabled."
+  tags:
+    - workers
+    - kubeadm
+
+- name: Set kubeadm worker role facts
+  ansible.builtin.set_fact:
+    kubeadm_first_control_plane: >-
+      {{ groups.get('kube_control_plane', []) | first | default('') }}
+    kubeadm_is_worker: "{{ inventory_hostname in groups.get('kube_workers', []) }}"
+  tags:
+    - workers
+    - kubeadm
+
+- name: Assert worker inventory prerequisites
+  ansible.builtin.assert:
+    that:
+      - groups.get('kube_control_plane', []) | length > 0
+      - cri_socket is defined
+      - cri_socket | string | length > 0
+    fail_msg: >-
+      kube_control_plane must contain at least one host and cri_socket must be
+      defined before worker nodes can join.
+    success_msg: "Worker join inventory prerequisites are present."
+  when: kubeadm_is_worker | bool
+  tags:
+    - workers
+    - kubeadm
+
+- name: Check worker kubelet configuration state
+  ansible.builtin.stat:
+    path: "{{ kubeadm_worker_kubelet_conf_path }}"
+  register: kubeadm_worker_kubelet_conf_stat
+  tags:
+    - workers
+    - kubeadm
+
+- name: Assert kubeadm worker join command is available
+  ansible.builtin.assert:
+    that:
+      - hostvars[kubeadm_first_control_plane].kubeadm_worker_join_command is defined
+      - >-
+        hostvars[kubeadm_first_control_plane].kubeadm_worker_join_command
+        | string
+        | length > 0
+    fail_msg: >-
+      Worker join command is not available from the first control-plane host.
+      Run the kubeadm_control_plane role first.
+    success_msg: "Worker join command is available."
+  no_log: true
+  when:
+    - kubeadm_is_worker | bool
+    - not kubeadm_worker_kubelet_conf_stat.stat.exists
+  tags:
+    - workers
+    - kubeadm
+
+- name: Join worker node to kubeadm cluster
+  ansible.builtin.command:
+    cmd: >-
+      {{ hostvars[kubeadm_first_control_plane].kubeadm_worker_join_command }}
+      --cri-socket {{ cri_socket }}
+    creates: "{{ kubeadm_worker_kubelet_conf_path }}"
+  register: kubeadm_worker_join_result
+  no_log: true
+  when:
+    - kubeadm_is_worker | bool
+    - not kubeadm_worker_kubelet_conf_stat.stat.exists
+  tags:
+    - workers
+    - kubeadm
+
+- name: Ensure kubelet is enabled and running on workers
+  ansible.builtin.systemd_service:
+    name: "{{ kubeadm_worker_kubelet_service_name }}"
+    enabled: true
+    state: started
+  when: kubeadm_is_worker | bool
+  tags:
+    - workers
+    - kubeadm
+
+- name: Validate kubelet service is active on workers
+  ansible.builtin.command:
+    cmd: "systemctl is-active {{ kubeadm_worker_kubelet_service_name }}"
   changed_when: false
-  when: kubeadm_workers_enabled
+  when: kubeadm_is_worker | bool
+  tags:
+    - workers
+    - kubeadm
+
+- name: Validate worker kubelet configuration exists
+  ansible.builtin.command:
+    cmd: "test -f {{ kubeadm_worker_kubelet_conf_path }}"
+  changed_when: false
+  when: kubeadm_is_worker | bool
+  tags:
+    - workers
+    - kubeadm
