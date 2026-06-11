@@ -1,2 +1,24 @@
 ---
 preflight_enabled: true
+preflight_allow_unsupported_os: false
+preflight_fail_on_swap: true
+
+preflight_min_control_plane_ram_mb: 2048
+preflight_min_worker_ram_mb: 2048
+preflight_min_control_plane_vcpus: 2
+preflight_min_worker_vcpus: 1
+
+preflight_required_apt_packages:
+  - apt-transport-https
+  - ca-certificates
+  - conntrack
+  - curl
+  - ebtables
+  - ethtool
+  - gnupg
+  - iproute2
+  - socat
+
+preflight_time_sync_apt_packages:
+  - chrony
+  - systemd-timesyncd

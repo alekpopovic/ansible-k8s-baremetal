@@ -1,6 +1,250 @@
 ---
-- name: Preflight placeholder
+- name: Assert preflight role is enabled
+  ansible.builtin.assert:
+    that:
+      - preflight_enabled | bool
+    fail_msg: "The preflight role is disabled. Set preflight_enabled=true to run checks."
+    success_msg: "Preflight role is enabled."
+  tags:
+    - preflight
+
+- name: Set preflight host resource facts
+  ansible.builtin.set_fact:
+    preflight_host_vcpus: >-
+      {{
+        ansible_processor_vcpus
+        | default(ansible_processor_nproc)
+        | default(0)
+        | int
+      }}
+    preflight_required_ram_mb: >-
+      {{
+        preflight_min_control_plane_ram_mb
+        if inventory_hostname in groups.get('kube_control_plane', [])
+        else preflight_min_worker_ram_mb
+      }}
+    preflight_required_vcpus: >-
+      {{
+        preflight_min_control_plane_vcpus
+        if inventory_hostname in groups.get('kube_control_plane', [])
+        else preflight_min_worker_vcpus
+      }}
+  tags:
+    - preflight
+
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == 'Debian'
+    fail_msg: >-
+      Unsupported OS family {{ ansible_os_family }} on {{ inventory_hostname }}.
+      This role supports Debian-family hosts only.
+    success_msg: "OS family is supported."
+  tags:
+    - preflight
+
+- name: Assert supported distribution and version
+  ansible.builtin.assert:
+    that:
+      - >-
+        preflight_allow_unsupported_os | bool
+        or (
+          ansible_distribution == 'Ubuntu'
+          and ansible_distribution_version is version('22.04', '>=')
+          and ansible_distribution_version is version('22.10', '<')
+        )
+        or (
+          ansible_distribution == 'Ubuntu'
+          and ansible_distribution_version is version('24.04', '>=')
+          and ansible_distribution_version is version('24.10', '<')
+        )
+        or (
+          ansible_distribution == 'Debian'
+          and ansible_distribution_major_version | int == 12
+        )
+    fail_msg: >-
+      Unsupported distribution {{ ansible_distribution }}
+      {{ ansible_distribution_version }} on {{ inventory_hostname }}.
+      Supported targets are Ubuntu 22.04, Ubuntu 24.04, and Debian 12.
+      Set preflight_allow_unsupported_os=true to bypass this check.
+    success_msg: "Distribution version is supported."
+  tags:
+    - preflight
+
+- name: Assert minimum memory
+  ansible.builtin.assert:
+    that:
+      - ansible_memtotal_mb | int >= preflight_required_ram_mb | int
+    fail_msg: >-
+      {{ inventory_hostname }} has {{ ansible_memtotal_mb }} MB RAM, but
+      requires at least {{ preflight_required_ram_mb }} MB for its Kubernetes role.
+    success_msg: "Memory requirement is satisfied."
+  tags:
+    - preflight
+
+- name: Assert minimum CPU
+  ansible.builtin.assert:
+    that:
+      - preflight_host_vcpus | int >= preflight_required_vcpus | int
+    fail_msg: >-
+      {{ inventory_hostname }} has {{ preflight_host_vcpus }} vCPU(s), but
+      requires at least {{ preflight_required_vcpus }} vCPU(s) for its Kubernetes role.
+    success_msg: "CPU requirement is satisfied."
+  tags:
+    - preflight
+
+- name: Assert hostname is unique across inventory hosts
+  ansible.builtin.assert:
+    that:
+      - >-
+        (
+          ansible_play_hosts_all
+          | map('extract', hostvars, 'ansible_hostname')
+          | list
+          | select('equalto', ansible_hostname)
+          | list
+          | length
+        ) == 1
+    fail_msg: >-
+      Hostname {{ ansible_hostname }} is not unique across the active inventory.
+      Kubernetes nodes must have unique hostnames.
+    success_msg: "Hostname is unique across the active inventory."
+  tags:
+    - preflight
+
+- name: Assert host has a reachable address defined
+  ansible.builtin.assert:
+    that:
+      - >-
+        (
+          ansible_host is defined
+          and ansible_host | string | length > 0
+        )
+        or (
+          ansible_default_ipv4.address is defined
+          and ansible_default_ipv4.address | string | length > 0
+        )
+    fail_msg: >-
+      {{ inventory_hostname }} must define ansible_host or expose
+      ansible_default_ipv4.address from gathered facts.
+    success_msg: "Host address is defined."
+  tags:
+    - preflight
+
+- name: Assert control plane endpoint is defined
+  ansible.builtin.assert:
+    that:
+      - control_plane_endpoint is defined
+      - control_plane_endpoint | string | length > 0
+    fail_msg: "control_plane_endpoint must be defined for kubeadm cluster bootstrap."
+    success_msg: "control_plane_endpoint is defined."
+  tags:
+    - preflight
+
+- name: Assert pod and service CIDRs are defined
+  ansible.builtin.assert:
+    that:
+      - pod_cidr is defined
+      - pod_cidr | string | length > 0
+      - service_cidr is defined
+      - service_cidr | string | length > 0
+    fail_msg: "pod_cidr and service_cidr must both be defined."
+    success_msg: "pod_cidr and service_cidr are defined."
+  tags:
+    - preflight
+
+- name: Assert pod and service CIDRs differ
+  ansible.builtin.assert:
+    that:
+      - pod_cidr != service_cidr
+    fail_msg: "pod_cidr and service_cidr must not be equal."
+    success_msg: "pod_cidr and service_cidr are distinct."
+  tags:
+    - preflight
+
+- name: Warn when swap is enabled and not configured as fatal
   ansible.builtin.debug:
-    msg: "Preflight checks are not implemented yet."
+    msg: >-
+      Swap is enabled on {{ inventory_hostname }}
+      ({{ ansible_swaptotal_mb }} MB). Kubernetes requires swap to be disabled
+      or explicitly supported by kubelet configuration.
   changed_when: false
-  when: preflight_enabled
+  when:
+    - ansible_swaptotal_mb | int > 0
+    - not preflight_fail_on_swap | bool
+  tags:
+    - preflight
+
+- name: Assert swap is disabled when configured as fatal
+  ansible.builtin.assert:
+    that:
+      - ansible_swaptotal_mb | int == 0
+    fail_msg: >-
+      Swap is enabled on {{ inventory_hostname }} ({{ ansible_swaptotal_mb }} MB).
+      Disable swap before bootstrap or set preflight_fail_on_swap=false to warn only.
+    success_msg: "Swap is disabled."
+  when: preflight_fail_on_swap | bool
+  tags:
+    - preflight
+
+- name: Check required apt package candidates
+  ansible.builtin.command:
+    cmd: "apt-cache policy {{ item }}"
+  changed_when: false
+  failed_when: false
+  loop: "{{ preflight_required_apt_packages }}"
+  register: preflight_required_apt_policy
+  tags:
+    - preflight
+
+- name: Assert required packages have apt candidates
+  ansible.builtin.assert:
+    that:
+      - >-
+        preflight_required_apt_policy.results
+        | rejectattr('rc', 'equalto', 0)
+        | list
+        | length == 0
+      - >-
+        preflight_required_apt_policy.results
+        | selectattr('stdout', 'search', 'Candidate: ')
+        | list
+        | length == (preflight_required_apt_packages | length)
+      - >-
+        preflight_required_apt_policy.results
+        | selectattr('stdout', 'search', 'Candidate: \\(none\\)')
+        | list
+        | length == 0
+    fail_msg: >-
+      One or more required packages are not available through apt. Check apt
+      repositories and package names: {{ preflight_required_apt_packages | join(', ') }}.
+    success_msg: "Required apt packages have install candidates."
+  tags:
+    - preflight
+
+- name: Check time sync apt package candidates
+  ansible.builtin.command:
+    cmd: "apt-cache policy {{ item }}"
+  changed_when: false
+  failed_when: false
+  loop: "{{ preflight_time_sync_apt_packages }}"
+  register: preflight_time_sync_apt_policy
+  tags:
+    - preflight
+
+- name: Assert at least one time sync package has an apt candidate
+  ansible.builtin.assert:
+    that:
+      - >-
+        preflight_time_sync_apt_policy.results
+        | selectattr('stdout', 'search', 'Candidate: ')
+        | rejectattr('stdout', 'search', 'Candidate: \\(none\\)')
+        | selectattr('rc', 'equalto', 0)
+        | list
+        | length > 0
+    fail_msg: >-
+      No supported time sync package is available through apt. Checked:
+      {{ preflight_time_sync_apt_packages | join(', ') }}.
+    success_msg: "At least one time sync package has an apt candidate."
+  tags:
+    - preflight
