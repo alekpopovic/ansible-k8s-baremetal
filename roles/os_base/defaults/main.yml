@@ -1,2 +1,31 @@
 ---
 os_base_enabled: true
+os_base_disable_swap: true
+os_base_manage_hosts_file: false
+
+os_base_packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gpg
+  - gnupg
+  - lsb-release
+  - software-properties-common
+  - chrony
+  - iproute2
+  - iptables
+  - socat
+  - conntrack
+
+os_base_kernel_modules:
+  - overlay
+  - br_netfilter
+
+os_base_sysctl_settings:
+  net.bridge.bridge-nf-call-iptables: 1
+  net.bridge.bridge-nf-call-ip6tables: 1
+  net.ipv4.ip_forward: 1
+
+os_base_modules_file: /etc/modules-load.d/k8s.conf
+os_base_sysctl_file: /etc/sysctl.d/99-kubernetes-cri.conf
+os_base_hosts_marker: "ANSIBLE MANAGED KUBERNETES HOSTS"

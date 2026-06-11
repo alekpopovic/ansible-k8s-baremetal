@@ -1,6 +1,100 @@
 ---
-- name: OS base placeholder
-  ansible.builtin.debug:
-    msg: "OS base configuration is not implemented yet."
-  changed_when: false
-  when: os_base_enabled
+- name: Assert OS base role is enabled
+  ansible.builtin.assert:
+    that:
+      - os_base_enabled | bool
+    fail_msg: "The os_base role is disabled. Set os_base_enabled=true to run it."
+    success_msg: "OS base role is enabled."
+  tags:
+    - os
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ os_base_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  tags:
+    - os
+
+- name: Ensure chrony is enabled and running
+  ansible.builtin.systemd_service:
+    name: chrony
+    enabled: true
+    state: started
+  tags:
+    - os
+
+- name: Disable active swap
+  ansible.builtin.command:
+    cmd: swapoff -a
+  changed_when: true
+  when:
+    - os_base_disable_swap | bool
+    - ansible_swaptotal_mb | int > 0
+  tags:
+    - os
+    - swap
+
+- name: Comment swap entries in fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^(\s*[^#\n]+\s+\S+\s+swap\s+\S+.*)$'
+    replace: '# \1'
+    backup: true
+  when: os_base_disable_swap | bool
+  tags:
+    - os
+    - swap
+
+- name: Load Kubernetes kernel modules
+  ansible.posix.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ os_base_kernel_modules }}"
+  tags:
+    - os
+    - kernel
+
+- name: Persist Kubernetes kernel modules
+  ansible.builtin.copy:
+    dest: "{{ os_base_modules_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      {% for module in os_base_kernel_modules %}
+      {{ module }}
+      {% endfor %}
+  tags:
+    - os
+    - kernel
+
+- name: Configure and apply Kubernetes sysctl settings
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: "{{ os_base_sysctl_file }}"
+    state: present
+    sysctl_set: true
+    reload: true
+  loop: "{{ os_base_sysctl_settings | dict2items }}"
+  tags:
+    - os
+    - sysctl
+
+- name: Manage Kubernetes hosts file entries
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} {{ os_base_hosts_marker }}"
+    block: |
+      {% for host in groups.get('kube_cluster', []) %}
+      {% set address = hostvars[host].ansible_host
+        | default(hostvars[host].ansible_default_ipv4.address | default('')) %}
+      {% if address | string | length > 0 %}
+      {{ address }} {{ hostvars[host].ansible_hostname | default(host) }} {{ host }}
+      {% endif %}
+      {% endfor %}
+  when: os_base_manage_hosts_file | bool
+  tags:
+    - os
