@@ -107,6 +107,7 @@
   changed_when: >-
     'created' in metallb_manifest_apply.stdout
     or 'configured' in metallb_manifest_apply.stdout
+  failed_when: metallb_manifest_apply.rc != 0
   when:
     - metallb_effective_enabled | bool
     - metallb_is_first_control_plane | bool
@@ -121,6 +122,7 @@
       rollout status deployment/controller --timeout=10s
   register: metallb_controller_wait
   changed_when: false
+  failed_when: metallb_controller_wait.rc != 0
   retries: "{{ metallb_wait_retries }}"
   delay: 10
   until: metallb_controller_wait.rc == 0
@@ -138,6 +140,7 @@
       rollout status daemonset/speaker --timeout=10s
   register: metallb_speaker_wait
   changed_when: false
+  failed_when: metallb_speaker_wait.rc != 0
   retries: "{{ metallb_wait_retries }}"
   delay: 10
   until: metallb_speaker_wait.rc == 0
@@ -182,6 +185,7 @@
   changed_when: >-
     'created' in metallb_ipaddresspool_apply.stdout
     or 'configured' in metallb_ipaddresspool_apply.stdout
+  failed_when: metallb_ipaddresspool_apply.rc != 0
   when:
     - metallb_effective_enabled | bool
     - metallb_is_first_control_plane | bool
@@ -197,6 +201,7 @@
   changed_when: >-
     'created' in metallb_l2advertisement_apply.stdout
     or 'configured' in metallb_l2advertisement_apply.stdout
+  failed_when: metallb_l2advertisement_apply.rc != 0
   when:
     - metallb_effective_enabled | bool
     - metallb_is_first_control_plane | bool
@@ -209,6 +214,8 @@
       kubectl --kubeconfig {{ kubeconfig_path }}
       get pods -n {{ metallb_namespace }}
   changed_when: false
+  failed_when: metallb_validate_pods.rc != 0
+  register: metallb_validate_pods
   when:
     - metallb_effective_enabled | bool
     - metallb_is_first_control_plane | bool
@@ -221,6 +228,8 @@
       kubectl --kubeconfig {{ kubeconfig_path }}
       get ipaddresspools -n {{ metallb_namespace }}
   changed_when: false
+  failed_when: metallb_validate_ipaddresspools.rc != 0
+  register: metallb_validate_ipaddresspools
   when:
     - metallb_effective_enabled | bool
     - metallb_is_first_control_plane | bool
@@ -233,6 +242,8 @@
       kubectl --kubeconfig {{ kubeconfig_path }}
       get l2advertisements -n {{ metallb_namespace }}
   changed_when: false
+  failed_when: metallb_validate_l2advertisements.rc != 0
+  register: metallb_validate_l2advertisements
   when:
     - metallb_effective_enabled | bool
     - metallb_is_first_control_plane | bool

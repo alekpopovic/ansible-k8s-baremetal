@@ -109,7 +109,9 @@
 - name: Validate Keepalived service is active
   ansible.builtin.command:
     cmd: "systemctl is-active {{ keepalived_service }}"
+  register: keepalived_service_active
   changed_when: false
+  failed_when: keepalived_service_active.rc != 0
   when: ha_api_enabled | bool
   tags:
     - control-plane

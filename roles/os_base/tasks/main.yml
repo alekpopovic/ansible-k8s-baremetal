@@ -26,9 +26,13 @@
     - os
 
 - name: Disable active swap
+  # Operational risk: disabling swap changes live memory behavior. This runs
+  # only when os_base_disable_swap=true and gathered facts show active swap.
   ansible.builtin.command:
     cmd: swapoff -a
+  register: os_base_swapoff
   changed_when: true
+  failed_when: os_base_swapoff.rc != 0
   when:
     - os_base_disable_swap | bool
     - ansible_swaptotal_mb | int > 0
@@ -37,6 +41,8 @@
     - swap
 
 - name: Comment swap entries in fstab
+  # Operational risk: this edits boot-time mounts. A backup is kept by Ansible
+  # and the task is gated by os_base_disable_swap=true.
   ansible.builtin.replace:
     path: /etc/fstab
     regexp: '^(\s*[^#\n]+\s+\S+\s+swap\s+\S+.*)$'
@@ -84,6 +90,8 @@
     - sysctl
 
 - name: Manage Kubernetes hosts file entries
+  # Operational risk: this manages only the marked block in /etc/hosts and is
+  # disabled unless os_base_manage_hosts_file=true.
   ansible.builtin.blockinfile:
     path: /etc/hosts
     marker: "# {mark} {{ os_base_hosts_marker }}"

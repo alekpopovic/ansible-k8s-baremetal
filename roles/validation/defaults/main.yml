@@ -4,6 +4,8 @@ kubeconfig_path: /etc/kubernetes/admin.conf
 validation_node_ready_timeout: 300s
 
 validation_create_test_workload: false
+# This deletes only the optional validation namespace created by this role.
+# It has no effect unless validation_create_test_workload is also true.
 validation_cleanup_test_workload: true
 validation_test_namespace: k8s-validation
 validation_test_app: validation-nginx

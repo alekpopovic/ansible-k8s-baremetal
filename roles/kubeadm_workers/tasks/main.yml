@@ -64,12 +64,15 @@
     - kubeadm
 
 - name: Join worker node to kubeadm cluster
+  # Operational risk: joining changes cluster membership. The kubelet.conf
+  # sentinel keeps this from rerunning on an initialized worker node.
   ansible.builtin.command:
     cmd: >-
       {{ hostvars[kubeadm_first_control_plane].kubeadm_worker_join_command }}
       --cri-socket {{ cri_socket }}
     creates: "{{ kubeadm_worker_kubelet_conf_path }}"
   register: kubeadm_worker_join_result
+  failed_when: kubeadm_worker_join_result.rc != 0
   no_log: true
   when:
     - kubeadm_is_worker | bool
@@ -92,6 +95,8 @@
   ansible.builtin.command:
     cmd: "systemctl is-active {{ kubeadm_worker_kubelet_service_name }}"
   changed_when: false
+  failed_when: kubeadm_worker_kubelet_active.rc != 0
+  register: kubeadm_worker_kubelet_active
   when: kubeadm_is_worker | bool
   tags:
     - workers
@@ -101,6 +106,8 @@
   ansible.builtin.command:
     cmd: "test -f {{ kubeadm_worker_kubelet_conf_path }}"
   changed_when: false
+  failed_when: kubeadm_worker_kubelet_conf_validate.rc != 0
+  register: kubeadm_worker_kubelet_conf_validate
   when: kubeadm_is_worker | bool
   tags:
     - workers

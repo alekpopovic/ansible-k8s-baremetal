@@ -129,12 +129,15 @@
     - kubeadm
 
 - name: Initialize first control-plane node
+  # Operational risk: kubeadm init creates the cluster control plane. The
+  # admin.conf sentinel keeps this from rerunning on an initialized node.
   ansible.builtin.command:
     cmd: >-
       kubeadm init --config {{ kubeadm_config_path }}
       {{ '--upload-certs' if kubeadm_upload_certs | bool else '' }}
     creates: "{{ kubeadm_admin_conf_path }}"
   register: kubeadm_init_result
+  failed_when: kubeadm_init_result.rc != 0
   no_log: "{{ kubeadm_upload_certs | bool }}"
   when:
     - inventory_hostname == kubeadm_first_control_plane
@@ -163,7 +166,14 @@
     group: root
     mode: "0600"
     remote_src: true
-  when: inventory_hostname == kubeadm_first_control_plane
+  when:
+    - inventory_hostname == kubeadm_first_control_plane
+    - >-
+      kubeadm_control_plane_admin_conf_stat.stat.exists
+      or (
+        kubeadm_init_result is defined
+        and kubeadm_init_result is changed
+      )
   tags:
     - control-plane
     - kubeadm
@@ -175,6 +185,7 @@
       --print-join-command
   register: kubeadm_worker_join_command_result
   changed_when: false
+  failed_when: kubeadm_worker_join_command_result.rc != 0
   no_log: true
   when: inventory_hostname == kubeadm_first_control_plane
   tags:
@@ -195,6 +206,7 @@
     cmd: kubeadm init phase upload-certs --upload-certs
   register: kubeadm_upload_certs_result
   changed_when: false
+  failed_when: kubeadm_upload_certs_result.rc != 0
   no_log: true
   when:
     - inventory_hostname == kubeadm_first_control_plane
@@ -281,10 +293,13 @@
     - kubeadm
 
 - name: Join additional control-plane nodes
+  # Operational risk: joining changes cluster membership. The admin.conf
+  # sentinel keeps this from rerunning on an initialized control-plane node.
   ansible.builtin.command:
     cmd: "{{ hostvars[kubeadm_first_control_plane].kubeadm_control_plane_join_command }}"
     creates: "{{ kubeadm_admin_conf_path }}"
   register: kubeadm_control_plane_join_result
+  failed_when: kubeadm_control_plane_join_result.rc != 0
   no_log: true
   when:
     - kubeadm_is_control_plane | bool

@@ -49,8 +49,9 @@
 - name: Generate default containerd configuration
   ansible.builtin.command:
     cmd: containerd config default
-  changed_when: false
   register: containerd_default_config
+  changed_when: false
+  failed_when: containerd_default_config.rc != 0
   when: not containerd_config_stat.stat.exists
   tags:
     - containerd
@@ -131,6 +132,7 @@
   ansible.builtin.command:
     cmd: containerd --version
   changed_when: false
+  failed_when: containerd_version.rc != 0
   register: containerd_version
   tags:
     - containerd
@@ -139,6 +141,7 @@
   ansible.builtin.command:
     cmd: "systemctl is-active {{ containerd_service_name }}"
   changed_when: false
+  failed_when: containerd_service_active.rc != 0
   register: containerd_service_active
   tags:
     - containerd

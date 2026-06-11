@@ -71,6 +71,8 @@
       gpg --dearmor -o {{ kubernetes_apt_keyring_path }}
       {{ kubernetes_apt_release_key_path }}
     creates: "{{ kubernetes_apt_keyring_path }}"
+  register: kubernetes_apt_key_dearmor
+  failed_when: kubernetes_apt_key_dearmor.rc != 0
   tags:
     - kubernetes
     - packages
@@ -151,6 +153,7 @@
   ansible.builtin.command:
     cmd: kubeadm version
   changed_when: false
+  failed_when: kubernetes_packages_kubeadm_version.rc != 0
   register: kubernetes_packages_kubeadm_version
   tags:
     - kubernetes
@@ -160,6 +163,7 @@
   ansible.builtin.command:
     cmd: kubelet --version
   changed_when: false
+  failed_when: kubernetes_packages_kubelet_version.rc != 0
   register: kubernetes_packages_kubelet_version
   tags:
     - kubernetes
@@ -169,6 +173,7 @@
   ansible.builtin.command:
     cmd: kubectl version --client=true
   changed_when: false
+  failed_when: kubernetes_packages_kubectl_version.rc != 0
   register: kubernetes_packages_kubectl_version
   tags:
     - kubernetes

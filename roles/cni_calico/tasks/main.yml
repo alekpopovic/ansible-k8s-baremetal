@@ -115,6 +115,7 @@
   changed_when: >-
     'created' in calico_operator_apply.stdout
     or 'configured' in calico_operator_apply.stdout
+  failed_when: calico_operator_apply.rc != 0
   when:
     - calico_role_enabled | bool
     - calico_is_first_control_plane | bool
@@ -131,6 +132,7 @@
   changed_when: >-
     'created' in calico_custom_resources_apply.stdout
     or 'configured' in calico_custom_resources_apply.stdout
+  failed_when: calico_custom_resources_apply.rc != 0
   when:
     - calico_role_enabled | bool
     - calico_is_first_control_plane | bool
@@ -145,6 +147,7 @@
       get pods -n calico-system --no-headers
   register: calico_system_pods
   changed_when: false
+  failed_when: calico_system_pods.rc != 0
   retries: "{{ calico_wait_retries }}"
   delay: 10
   until: calico_system_pods.stdout_lines | length > 0
@@ -161,6 +164,8 @@
       kubectl --kubeconfig {{ kubeconfig_path }}
       get pods -n calico-system
   changed_when: false
+  failed_when: calico_validate_pods.rc != 0
+  register: calico_validate_pods
   when:
     - calico_role_enabled | bool
     - calico_is_first_control_plane | bool
@@ -172,6 +177,8 @@
   ansible.builtin.command:
     cmd: "kubectl --kubeconfig {{ kubeconfig_path }} get nodes"
   changed_when: false
+  failed_when: calico_validate_nodes.rc != 0
+  register: calico_validate_nodes
   when:
     - calico_role_enabled | bool
     - calico_is_first_control_plane | bool

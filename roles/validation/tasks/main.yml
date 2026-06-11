@@ -45,6 +45,7 @@
   ansible.builtin.command:
     cmd: "kubectl --kubeconfig {{ kubeconfig_path }} get nodes -o wide"
   changed_when: false
+  failed_when: validation_nodes_wide.rc != 0
   register: validation_nodes_wide
   when:
     - validation_enabled | bool
@@ -56,6 +57,7 @@
   ansible.builtin.command:
     cmd: "kubectl --kubeconfig {{ kubeconfig_path }} get pods -A"
   changed_when: false
+  failed_when: validation_all_pods.rc != 0
   register: validation_all_pods
   when:
     - validation_enabled | bool
@@ -96,6 +98,7 @@
       kubectl --kubeconfig {{ kubeconfig_path }}
       -n kube-system get pods
   changed_when: false
+  failed_when: validation_kube_system_pods.rc != 0
   register: validation_kube_system_pods
   when:
     - validation_enabled | bool
@@ -110,6 +113,7 @@
       wait --for=condition=Ready nodes --all
       --timeout={{ validation_node_ready_timeout }}
   changed_when: false
+  failed_when: validation_nodes_ready.rc != 0
   register: validation_nodes_ready
   when:
     - validation_enabled | bool
@@ -132,6 +136,7 @@
   loop: "{{ pod_security_admission_namespaces }}"
   register: validation_psa_label
   changed_when: "'not labeled' not in validation_psa_label.stdout"
+  failed_when: validation_psa_label.rc != 0
   when:
     - validation_enabled | bool
     - validation_is_first_control_plane | bool
@@ -172,6 +177,7 @@
   changed_when: >-
     'created' in validation_deployment_apply.stdout
     or 'configured' in validation_deployment_apply.stdout
+  failed_when: validation_deployment_apply.rc != 0
   when:
     - validation_enabled | bool
     - validation_is_first_control_plane | bool
@@ -197,6 +203,7 @@
   changed_when: >-
     'created' in validation_clusterip_apply.stdout
     or 'configured' in validation_clusterip_apply.stdout
+  failed_when: validation_clusterip_apply.rc != 0
   when:
     - validation_enabled | bool
     - validation_is_first_control_plane | bool
@@ -212,6 +219,8 @@
       rollout status deployment/{{ validation_test_app }}
       --timeout=120s
   changed_when: false
+  failed_when: validation_deployment_rollout.rc != 0
+  register: validation_deployment_rollout
   when:
     - validation_enabled | bool
     - validation_is_first_control_plane | bool
@@ -237,6 +246,7 @@
   changed_when: >-
     'created' in validation_loadbalancer_apply.stdout
     or 'configured' in validation_loadbalancer_apply.stdout
+  failed_when: validation_loadbalancer_apply.rc != 0
   when:
     - validation_enabled | bool
     - validation_is_first_control_plane | bool
@@ -254,6 +264,7 @@
       -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
   changed_when: false
   register: validation_loadbalancer_ip
+  failed_when: validation_loadbalancer_ip.rc != 0
   retries: "{{ validation_lb_wait_retries }}"
   delay: 10
   until: validation_loadbalancer_ip.stdout | length > 0
@@ -281,6 +292,8 @@
     - validation
 
 - name: Clean up validation namespace
+  # Operational risk: this deletes only validation_test_namespace and is gated
+  # by validation_create_test_workload plus validation_cleanup_test_workload.
   ansible.builtin.command:
     cmd: >-
       kubectl --kubeconfig {{ kubeconfig_path }}
@@ -288,6 +301,7 @@
       --ignore-not-found=true
   register: validation_namespace_cleanup
   changed_when: "'deleted' in validation_namespace_cleanup.stdout"
+  failed_when: validation_namespace_cleanup.rc != 0
   when:
     - validation_enabled | bool
     - validation_is_first_control_plane | bool

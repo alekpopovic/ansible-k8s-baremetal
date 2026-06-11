@@ -60,6 +60,7 @@
   changed_when: >-
     'created' in ingress_nginx_manifest_apply.stdout
     or 'configured' in ingress_nginx_manifest_apply.stdout
+  failed_when: ingress_nginx_manifest_apply.rc != 0
   when:
     - ingress_nginx_effective_enabled | bool
     - ingress_nginx_is_first_control_plane | bool
@@ -75,6 +76,7 @@
       -o jsonpath='{.spec.type}'
   register: ingress_nginx_current_service_type
   changed_when: false
+  failed_when: ingress_nginx_current_service_type.rc != 0
   when:
     - ingress_nginx_effective_enabled | bool
     - ingress_nginx_is_first_control_plane | bool
@@ -93,6 +95,7 @@
   changed_when: >-
     'patched' in ingress_nginx_service_patch.stdout
     or ingress_nginx_current_service_type.stdout != ingress_nginx_service_type
+  failed_when: ingress_nginx_service_patch.rc != 0
   when:
     - ingress_nginx_effective_enabled | bool
     - ingress_nginx_is_first_control_plane | bool
@@ -109,6 +112,7 @@
       --timeout=10s
   register: ingress_nginx_rollout_wait
   changed_when: false
+  failed_when: ingress_nginx_rollout_wait.rc != 0
   retries: "{{ ingress_nginx_wait_retries }}"
   delay: 10
   until: ingress_nginx_rollout_wait.rc == 0
@@ -124,6 +128,8 @@
       kubectl --kubeconfig {{ kubeconfig_path }}
       get pods -n {{ ingress_nginx_namespace }}
   changed_when: false
+  failed_when: ingress_nginx_validate_pods.rc != 0
+  register: ingress_nginx_validate_pods
   when:
     - ingress_nginx_effective_enabled | bool
     - ingress_nginx_is_first_control_plane | bool
@@ -136,6 +142,8 @@
       kubectl --kubeconfig {{ kubeconfig_path }}
       get svc -n {{ ingress_nginx_namespace }}
   changed_when: false
+  failed_when: ingress_nginx_validate_services.rc != 0
+  register: ingress_nginx_validate_services
   when:
     - ingress_nginx_effective_enabled | bool
     - ingress_nginx_is_first_control_plane | bool
