@@ -1,6 +1,180 @@
 ---
-- name: Calico placeholder
+- name: Set Calico role facts
+  ansible.builtin.set_fact:
+    calico_role_enabled: >-
+      {{ (cni_calico_enabled | bool) and (calico_enabled | bool) }}
+    calico_first_control_plane: >-
+      {{ groups.get('kube_control_plane', []) | first | default('') }}
+    calico_is_first_control_plane: >-
+      {{
+        inventory_hostname
+        == (groups.get('kube_control_plane', []) | first | default(''))
+      }}
+    calico_wait_retries: >-
+      {{ (calico_wait_timeout_seconds | int / 10) | round(0, 'ceil') | int }}
+  tags:
+    - cni
+    - calico
+
+- name: Report Calico role disabled
   ansible.builtin.debug:
-    msg: "Calico installation is not implemented yet."
+    msg: "Calico is disabled; skipping CNI installation."
   changed_when: false
-  when: cni_calico_enabled
+  when: not calico_role_enabled | bool
+  tags:
+    - cni
+    - calico
+
+- name: Assert Calico prerequisites are defined
+  ansible.builtin.assert:
+    that:
+      - groups.get('kube_control_plane', []) | length > 0
+      - calico_version is defined
+      - calico_version | string | length > 0
+      - pod_cidr is defined
+      - pod_cidr | string | length > 0
+      - kubeconfig_path is defined
+      - kubeconfig_path | string | length > 0
+    fail_msg: >-
+      kube_control_plane, calico_version, pod_cidr, and kubeconfig_path must be
+      defined before installing Calico.
+    success_msg: "Calico prerequisites are defined."
+  when:
+    - calico_role_enabled | bool
+    - calico_is_first_control_plane | bool
+  tags:
+    - cni
+    - calico
+
+- name: Set Calico operator manifest URL
+  ansible.builtin.set_fact:
+    calico_operator_manifest_url: >-
+      {{
+        [
+          calico_operator_manifest_base_url,
+          calico_version,
+          'manifests',
+          calico_operator_manifest_name
+        ] | join('/')
+      }}
+  when:
+    - calico_role_enabled | bool
+    - calico_is_first_control_plane | bool
+  tags:
+    - cni
+    - calico
+
+- name: Create Calico manifest directory
+  ansible.builtin.file:
+    path: "{{ calico_manifest_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when:
+    - calico_role_enabled | bool
+    - calico_is_first_control_plane | bool
+  tags:
+    - cni
+    - calico
+
+- name: Download Tigera operator manifest
+  ansible.builtin.get_url:
+    url: "{{ calico_operator_manifest_url }}"
+    dest: "{{ calico_operator_manifest_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - calico_role_enabled | bool
+    - calico_is_first_control_plane | bool
+  tags:
+    - cni
+    - calico
+
+- name: Render Calico custom resources
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/calico-custom-resources.yaml.j2"
+    dest: "{{ calico_custom_resources_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - calico_role_enabled | bool
+    - calico_is_first_control_plane | bool
+  tags:
+    - cni
+    - calico
+
+- name: Apply Tigera operator manifest
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      apply -f {{ calico_operator_manifest_path }}
+  register: calico_operator_apply
+  changed_when: >-
+    'created' in calico_operator_apply.stdout
+    or 'configured' in calico_operator_apply.stdout
+  when:
+    - calico_role_enabled | bool
+    - calico_is_first_control_plane | bool
+  tags:
+    - cni
+    - calico
+
+- name: Apply Calico custom resources
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      apply -f {{ calico_custom_resources_path }}
+  register: calico_custom_resources_apply
+  changed_when: >-
+    'created' in calico_custom_resources_apply.stdout
+    or 'configured' in calico_custom_resources_apply.stdout
+  when:
+    - calico_role_enabled | bool
+    - calico_is_first_control_plane | bool
+  tags:
+    - cni
+    - calico
+
+- name: Wait for calico-system pods to appear
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      get pods -n calico-system --no-headers
+  register: calico_system_pods
+  changed_when: false
+  retries: "{{ calico_wait_retries }}"
+  delay: 10
+  until: calico_system_pods.stdout_lines | length > 0
+  when:
+    - calico_role_enabled | bool
+    - calico_is_first_control_plane | bool
+  tags:
+    - cni
+    - calico
+
+- name: Validate Calico system pods
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      get pods -n calico-system
+  changed_when: false
+  when:
+    - calico_role_enabled | bool
+    - calico_is_first_control_plane | bool
+  tags:
+    - cni
+    - calico
+
+- name: Validate Kubernetes nodes after Calico apply
+  ansible.builtin.command:
+    cmd: "kubectl --kubeconfig {{ kubeconfig_path }} get nodes"
+  changed_when: false
+  when:
+    - calico_role_enabled | bool
+    - calico_is_first_control_plane | bool
+  tags:
+    - cni
+    - calico

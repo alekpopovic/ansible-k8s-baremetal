@@ -1,2 +1,14 @@
 ---
 cni_calico_enabled: true
+calico_enabled: true
+calico_encapsulation: VXLAN
+calico_nat_outgoing: Enabled
+calico_block_size: 26
+kubeconfig_path: /etc/kubernetes/admin.conf
+
+calico_operator_manifest_base_url: https://raw.githubusercontent.com/projectcalico/calico
+calico_operator_manifest_name: tigera-operator.yaml
+calico_manifest_dir: /root/calico
+calico_operator_manifest_path: /root/calico/tigera-operator.yaml
+calico_custom_resources_path: /root/calico/custom-resources.yaml
+calico_wait_timeout_seconds: 300
