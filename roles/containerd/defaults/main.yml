@@ -1,2 +1,8 @@
 ---
 containerd_enabled: true
+containerd_install_source: os
+containerd_package_name: containerd
+containerd_service_name: containerd
+containerd_config_dir: /etc/containerd
+containerd_config_file: /etc/containerd/config.toml
+containerd_pause_image: ""
