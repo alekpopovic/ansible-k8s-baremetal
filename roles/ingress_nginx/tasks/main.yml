@@ -1,8 +1,143 @@
 ---
-- name: Ingress-nginx placeholder
+- name: Set ingress-nginx role facts
+  ansible.builtin.set_fact:
+    ingress_nginx_effective_enabled: >-
+      {{
+        (ingress_nginx_role_enabled | bool)
+        and (ingress_nginx_enabled | bool)
+      }}
+    ingress_nginx_first_control_plane: >-
+      {{ groups.get('kube_control_plane', []) | first | default('') }}
+    ingress_nginx_is_first_control_plane: >-
+      {{
+        inventory_hostname
+        == (groups.get('kube_control_plane', []) | first | default(''))
+      }}
+    ingress_nginx_wait_retries: >-
+      {{
+        (ingress_nginx_wait_timeout_seconds | int / 10)
+        | round(0, 'ceil')
+        | int
+      }}
+  tags:
+    - ingress
+
+- name: Report ingress-nginx role disabled
   ansible.builtin.debug:
-    msg: "ingress-nginx installation is not implemented yet."
+    msg: "ingress-nginx is disabled; skipping ingress controller installation."
+  changed_when: false
+  when: not ingress_nginx_effective_enabled | bool
+  tags:
+    - ingress
+
+- name: Assert ingress-nginx prerequisites are defined
+  ansible.builtin.assert:
+    that:
+      - groups.get('kube_control_plane', []) | length > 0
+      - ingress_nginx_namespace is defined
+      - ingress_nginx_namespace | string | length > 0
+      - ingress_nginx_manifest_url is defined
+      - ingress_nginx_manifest_url | string | length > 0
+      - ingress_nginx_service_type is defined
+      - ingress_nginx_service_type | string | length > 0
+      - kubeconfig_path is defined
+      - kubeconfig_path | string | length > 0
+    fail_msg: >-
+      kube_control_plane, ingress_nginx_namespace, ingress_nginx_manifest_url,
+      ingress_nginx_service_type, and kubeconfig_path must be defined before
+      installing ingress-nginx.
+    success_msg: "ingress-nginx prerequisites are defined."
+  when: ingress_nginx_effective_enabled | bool
+  tags:
+    - ingress
+
+- name: Apply ingress-nginx manifest
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      apply -f {{ ingress_nginx_manifest_url }}
+  register: ingress_nginx_manifest_apply
+  changed_when: >-
+    'created' in ingress_nginx_manifest_apply.stdout
+    or 'configured' in ingress_nginx_manifest_apply.stdout
+  when:
+    - ingress_nginx_effective_enabled | bool
+    - ingress_nginx_is_first_control_plane | bool
+  tags:
+    - ingress
+
+- name: Read ingress-nginx controller service type
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      -n {{ ingress_nginx_namespace }}
+      get service {{ ingress_nginx_controller_service_name }}
+      -o jsonpath='{.spec.type}'
+  register: ingress_nginx_current_service_type
   changed_when: false
   when:
-    - ingress_nginx_role_enabled
-    - ingress_nginx_enabled
+    - ingress_nginx_effective_enabled | bool
+    - ingress_nginx_is_first_control_plane | bool
+  tags:
+    - ingress
+
+- name: Patch ingress-nginx controller service type
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      -n {{ ingress_nginx_namespace }}
+      patch service {{ ingress_nginx_controller_service_name }}
+      --type merge
+      -p '{"spec":{"type":"{{ ingress_nginx_service_type }}"}}'
+  register: ingress_nginx_service_patch
+  changed_when: >-
+    'patched' in ingress_nginx_service_patch.stdout
+    or ingress_nginx_current_service_type.stdout != ingress_nginx_service_type
+  when:
+    - ingress_nginx_effective_enabled | bool
+    - ingress_nginx_is_first_control_plane | bool
+    - ingress_nginx_current_service_type.stdout != ingress_nginx_service_type
+  tags:
+    - ingress
+
+- name: Wait for ingress-nginx controller rollout
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      -n {{ ingress_nginx_namespace }}
+      rollout status deployment/{{ ingress_nginx_controller_deployment_name }}
+      --timeout=10s
+  register: ingress_nginx_rollout_wait
+  changed_when: false
+  retries: "{{ ingress_nginx_wait_retries }}"
+  delay: 10
+  until: ingress_nginx_rollout_wait.rc == 0
+  when:
+    - ingress_nginx_effective_enabled | bool
+    - ingress_nginx_is_first_control_plane | bool
+  tags:
+    - ingress
+
+- name: Validate ingress-nginx pods
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      get pods -n {{ ingress_nginx_namespace }}
+  changed_when: false
+  when:
+    - ingress_nginx_effective_enabled | bool
+    - ingress_nginx_is_first_control_plane | bool
+  tags:
+    - ingress
+
+- name: Validate ingress-nginx services
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      get svc -n {{ ingress_nginx_namespace }}
+  changed_when: false
+  when:
+    - ingress_nginx_effective_enabled | bool
+    - ingress_nginx_is_first_control_plane | bool
+  tags:
+    - ingress
