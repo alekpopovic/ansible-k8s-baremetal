@@ -80,7 +80,9 @@ Do not commit the plaintext value.
   `kube_workers`.
 - `lb_nodes`: optional HAProxy/Keepalived nodes for the Kubernetes API VIP.
 
-`lb_nodes` are intentionally separate from `kube_cluster`.
+`lb_nodes` are intentionally separate from `kube_cluster`. With the default
+`haproxy_k8s_api_bind_address: "*"`, do not place HAProxy on a control-plane
+host because HAProxy and kube-apiserver would both bind TCP `6443`.
 
 ## Network Requirements
 
@@ -136,7 +138,7 @@ k8s_version: "1.30.0"
 pod_cidr: "192.168.0.0/16"
 service_cidr: "10.96.0.0/12"
 cluster_dns_domain: cluster.local
-control_plane_endpoint: "10.0.0.10:6443"
+control_plane_endpoint: "10.0.0.11:6443"
 cri_socket: "unix:///run/containerd/containerd.sock"
 calico_version: "v3.28.0"
 calico_encapsulation: VXLAN

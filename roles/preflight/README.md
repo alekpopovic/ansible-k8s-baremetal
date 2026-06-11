@@ -22,6 +22,7 @@ messages, and read-only `apt-cache policy` checks.
 - Required base packages have apt install candidates.
 - At least one supported time sync package has an apt install candidate.
 - `control_plane_endpoint` is defined.
+- When `ha_api_enabled=true`, `control_plane_endpoint` uses `k8s_api_vip`.
 - `pod_cidr` and `service_cidr` are defined and are not equal.
 
 The role does not verify that every node can SSH to every other node. The
@@ -67,7 +68,7 @@ enabled.
 The cluster inventory must define:
 
 ```yaml
-control_plane_endpoint: "192.0.2.10:6443"
+control_plane_endpoint: "192.0.2.11:6443"
 pod_cidr: "192.168.0.0/16"
 service_cidr: "10.96.0.0/12"
 ```

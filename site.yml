@@ -39,6 +39,27 @@
         - control-plane
         - keepalived
 
+    - name: Assert wildcard HAProxy bind does not overlap control-plane nodes
+      ansible.builtin.assert:
+        that:
+          - >-
+            groups.get('lb_nodes', [])
+            | intersect(groups.get('kube_control_plane', []))
+            | length == 0
+        fail_msg: >-
+          lb_nodes must not overlap kube_control_plane when
+          haproxy_k8s_api_bind_address is "*"; HAProxy and kube-apiserver would
+          both bind TCP 6443. Use dedicated lb_nodes or bind HAProxy only to
+          the VIP address.
+        success_msg: "Wildcard HAProxy bind does not overlap control-plane nodes."
+      run_once: true
+      when:
+        - ha_api_enabled | default(false) | bool
+        - haproxy_k8s_api_bind_address | default('*') == '*'
+      tags:
+        - control-plane
+        - haproxy
+
 - name: Configure optional HA Kubernetes API endpoint
   hosts: lb_nodes
   gather_facts: true

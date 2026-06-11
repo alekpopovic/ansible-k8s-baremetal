@@ -138,7 +138,7 @@ kubectl -n metallb-system get pods
 ingress-nginx:
 
 ```yaml
-ingress_nginx_manifest_ref: main
+ingress_nginx_manifest_ref: controller-v1.11.3
 ```
 
 ```bash

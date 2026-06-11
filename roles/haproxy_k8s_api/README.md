@@ -4,6 +4,11 @@ Installs and configures HAProxy as a TCP load balancer for the Kubernetes API.
 
 This role is disabled unless `ha_api_enabled: true`.
 
+Use dedicated `lb_nodes` with the default `haproxy_k8s_api_bind_address: "*"`.
+If an advanced deployment co-locates HAProxy with a control-plane host, bind
+HAProxy only to the VIP address to avoid conflicting with kube-apiserver on
+TCP `6443`.
+
 ## Variables
 
 ```yaml

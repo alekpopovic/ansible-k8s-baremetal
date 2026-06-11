@@ -34,7 +34,7 @@ Sensitive join material is hidden with `no_log`.
 ## Variables
 
 ```yaml
-control_plane_endpoint: "192.0.2.10:6443"
+control_plane_endpoint: "192.0.2.11:6443"
 pod_cidr: "192.168.0.0/16"
 service_cidr: "10.96.0.0/12"
 cluster_dns_domain: cluster.local
@@ -47,7 +47,7 @@ kubeconfig_root_path: /root/.kube/config
 kubeadm_admin_conf_path: /etc/kubernetes/admin.conf
 kubeadm_root_kube_dir: /root/.kube
 kubeadm_join_token_ttl: 2h
-kubeadm_config_api_version: kubeadm.k8s.io/v1beta4
+kubeadm_config_api_version: kubeadm.k8s.io/v1beta3
 kubeadm_kubelet_config_api_version: kubelet.config.k8s.io/v1beta1
 kubeadm_audit_policy_enabled: false
 kubeadm_audit_policy_path: /etc/kubernetes/audit-policy.yaml

@@ -61,6 +61,15 @@
     owner: root
     group: root
     mode: "0644"
+  register: kubernetes_apt_release_key
+  tags:
+    - kubernetes
+    - packages
+
+- name: Check Kubernetes apt keyring
+  ansible.builtin.stat:
+    path: "{{ kubernetes_apt_keyring_path }}"
+  register: kubernetes_apt_keyring_stat
   tags:
     - kubernetes
     - packages
@@ -68,11 +77,17 @@
 - name: Dearmor Kubernetes apt release key
   ansible.builtin.command:
     cmd: >-
-      gpg --dearmor -o {{ kubernetes_apt_keyring_path }}
+      gpg --dearmor --yes -o {{ kubernetes_apt_keyring_path }}
       {{ kubernetes_apt_release_key_path }}
-    creates: "{{ kubernetes_apt_keyring_path }}"
   register: kubernetes_apt_key_dearmor
+  changed_when: >-
+    kubernetes_apt_release_key is changed
+    or not kubernetes_apt_keyring_stat.stat.exists
   failed_when: kubernetes_apt_key_dearmor.rc != 0
+  when:
+    - >-
+      kubernetes_apt_release_key is changed
+      or not kubernetes_apt_keyring_stat.stat.exists
   tags:
     - kubernetes
     - packages

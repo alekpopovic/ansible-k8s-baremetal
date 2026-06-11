@@ -3,7 +3,7 @@ ingress_nginx_role_enabled: true
 ingress_nginx_enabled: false
 ingress_nginx_namespace: ingress-nginx
 ingress_nginx_manifest_base_url: https://raw.githubusercontent.com/kubernetes/ingress-nginx
-ingress_nginx_manifest_ref: main
+ingress_nginx_manifest_ref: controller-v1.11.3
 ingress_nginx_manifest_path: deploy/static/provider/cloud/deploy.yaml
 ingress_nginx_manifest_url: >-
   {{

@@ -33,7 +33,7 @@ Additional defaults:
 ```yaml
 ingress_nginx_role_enabled: true
 ingress_nginx_manifest_base_url: https://raw.githubusercontent.com/kubernetes/ingress-nginx
-ingress_nginx_manifest_ref: main
+ingress_nginx_manifest_ref: controller-v1.11.3
 ingress_nginx_manifest_path: deploy/static/provider/cloud/deploy.yaml
 ingress_nginx_controller_service_name: ingress-nginx-controller
 ingress_nginx_controller_deployment_name: ingress-nginx-controller

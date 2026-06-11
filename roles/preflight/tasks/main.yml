@@ -141,6 +141,25 @@
   tags:
     - preflight
 
+- name: Assert HA control plane endpoint uses configured VIP
+  ansible.builtin.assert:
+    that:
+      - k8s_api_vip is defined
+      - k8s_api_vip | string | length > 0
+      - >-
+        (
+          control_plane_endpoint
+          | regex_replace('^\[([^]]+)\].*$', '\\1')
+          | regex_replace(':.*$', '')
+        ) == (k8s_api_vip | string)
+    fail_msg: >-
+      ha_api_enabled=true requires control_plane_endpoint to use k8s_api_vip.
+      Set control_plane_endpoint to {{ k8s_api_vip | default('<vip>') }}:{{ k8s_api_port | default(6443) }}.
+    success_msg: "HA control_plane_endpoint uses the configured VIP."
+  when: ha_api_enabled | default(false) | bool
+  tags:
+    - preflight
+
 - name: Assert pod and service CIDRs are defined
   ansible.builtin.assert:
     that:

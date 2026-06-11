@@ -23,6 +23,7 @@ apiServer:
     - "{{ kubeadm_node_advertise_address }}"
     - "{{ kubeadm_control_plane_endpoint_host }}"
 {% if kubeadm_audit_policy_enabled | bool %}
+{% if kubeadm_config_api_version == 'kubeadm.k8s.io/v1beta4' %}
   extraArgs:
     - name: audit-policy-file
       value: "{{ kubeadm_audit_policy_path }}"
@@ -34,6 +35,14 @@ apiServer:
       value: "{{ kubeadm_audit_log_maxbackup }}"
     - name: audit-log-maxsize
       value: "{{ kubeadm_audit_log_maxsize }}"
+{% else %}
+  extraArgs:
+    audit-policy-file: "{{ kubeadm_audit_policy_path }}"
+    audit-log-path: "{{ kubeadm_audit_log_path }}"
+    audit-log-maxage: "{{ kubeadm_audit_log_maxage }}"
+    audit-log-maxbackup: "{{ kubeadm_audit_log_maxbackup }}"
+    audit-log-maxsize: "{{ kubeadm_audit_log_maxsize }}"
+{% endif %}
   extraVolumes:
     - name: audit-policy
       hostPath: "{{ kubeadm_audit_policy_path }}"
