@@ -1,8 +1,240 @@
 ---
-- name: MetalLB placeholder
+- name: Set MetalLB role facts
+  ansible.builtin.set_fact:
+    metallb_effective_enabled: >-
+      {{ (metallb_role_enabled | bool) and (metallb_enabled | bool) }}
+    metallb_first_control_plane: >-
+      {{ groups.get('kube_control_plane', []) | first | default('') }}
+    metallb_is_first_control_plane: >-
+      {{
+        inventory_hostname
+        == (groups.get('kube_control_plane', []) | first | default(''))
+      }}
+    metallb_wait_retries: >-
+      {{ (metallb_wait_timeout_seconds | int / 10) | round(0, 'ceil') | int }}
+  tags:
+    - metallb
+
+- name: Report MetalLB role disabled
   ansible.builtin.debug:
-    msg: "MetalLB installation is not implemented yet."
+    msg: "MetalLB is disabled; skipping LoadBalancer integration."
+  changed_when: false
+  when: not metallb_effective_enabled | bool
+  tags:
+    - metallb
+
+- name: Assert MetalLB prerequisites are defined
+  ansible.builtin.assert:
+    that:
+      - groups.get('kube_control_plane', []) | length > 0
+      - metallb_version is defined
+      - metallb_version | string | length > 0
+      - metallb_namespace is defined
+      - metallb_namespace | string | length > 0
+      - kubeconfig_path is defined
+      - kubeconfig_path | string | length > 0
+    fail_msg: >-
+      kube_control_plane, metallb_version, metallb_namespace, and
+      kubeconfig_path must be defined before installing MetalLB.
+    success_msg: "MetalLB prerequisites are defined."
+  when: metallb_effective_enabled | bool
+  tags:
+    - metallb
+
+- name: Assert MetalLB address pool is configured
+  ansible.builtin.assert:
+    that:
+      - metallb_address_pool is defined
+      - metallb_address_pool | length > 0
+    fail_msg: >-
+      metallb_enabled=true requires metallb_address_pool to contain at least
+      one free LAN address range.
+    success_msg: "MetalLB address pool is configured."
+  when: metallb_effective_enabled | bool
+  tags:
+    - metallb
+
+- name: Set MetalLB manifest URL
+  ansible.builtin.set_fact:
+    metallb_manifest_url: >-
+      {{
+        [
+          metallb_manifest_base_url,
+          metallb_version,
+          'config',
+          'manifests',
+          metallb_manifest_name
+        ] | join('/')
+      }}
+  when:
+    - metallb_effective_enabled | bool
+    - metallb_is_first_control_plane | bool
+  tags:
+    - metallb
+
+- name: Create MetalLB manifest directory
+  ansible.builtin.file:
+    path: "{{ metallb_manifest_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when:
+    - metallb_effective_enabled | bool
+    - metallb_is_first_control_plane | bool
+  tags:
+    - metallb
+
+- name: Download MetalLB manifest
+  ansible.builtin.get_url:
+    url: "{{ metallb_manifest_url }}"
+    dest: "{{ metallb_manifest_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - metallb_effective_enabled | bool
+    - metallb_is_first_control_plane | bool
+  tags:
+    - metallb
+
+- name: Apply MetalLB manifest
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      apply -f {{ metallb_manifest_path }}
+  register: metallb_manifest_apply
+  changed_when: >-
+    'created' in metallb_manifest_apply.stdout
+    or 'configured' in metallb_manifest_apply.stdout
+  when:
+    - metallb_effective_enabled | bool
+    - metallb_is_first_control_plane | bool
+  tags:
+    - metallb
+
+- name: Wait for MetalLB controller rollout
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      -n {{ metallb_namespace }}
+      rollout status deployment/controller --timeout=10s
+  register: metallb_controller_wait
+  changed_when: false
+  retries: "{{ metallb_wait_retries }}"
+  delay: 10
+  until: metallb_controller_wait.rc == 0
+  when:
+    - metallb_effective_enabled | bool
+    - metallb_is_first_control_plane | bool
+  tags:
+    - metallb
+
+- name: Wait for MetalLB speaker rollout
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      -n {{ metallb_namespace }}
+      rollout status daemonset/speaker --timeout=10s
+  register: metallb_speaker_wait
+  changed_when: false
+  retries: "{{ metallb_wait_retries }}"
+  delay: 10
+  until: metallb_speaker_wait.rc == 0
+  when:
+    - metallb_effective_enabled | bool
+    - metallb_is_first_control_plane | bool
+  tags:
+    - metallb
+
+- name: Render MetalLB IPAddressPool
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/metallb-ipaddresspool.yaml.j2"
+    dest: "{{ metallb_ipaddresspool_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - metallb_effective_enabled | bool
+    - metallb_is_first_control_plane | bool
+  tags:
+    - metallb
+
+- name: Render MetalLB L2Advertisement
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/metallb-l2advertisement.yaml.j2"
+    dest: "{{ metallb_l2advertisement_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - metallb_effective_enabled | bool
+    - metallb_is_first_control_plane | bool
+  tags:
+    - metallb
+
+- name: Apply MetalLB IPAddressPool
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      apply -f {{ metallb_ipaddresspool_path }}
+  register: metallb_ipaddresspool_apply
+  changed_when: >-
+    'created' in metallb_ipaddresspool_apply.stdout
+    or 'configured' in metallb_ipaddresspool_apply.stdout
+  when:
+    - metallb_effective_enabled | bool
+    - metallb_is_first_control_plane | bool
+  tags:
+    - metallb
+
+- name: Apply MetalLB L2Advertisement
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      apply -f {{ metallb_l2advertisement_path }}
+  register: metallb_l2advertisement_apply
+  changed_when: >-
+    'created' in metallb_l2advertisement_apply.stdout
+    or 'configured' in metallb_l2advertisement_apply.stdout
+  when:
+    - metallb_effective_enabled | bool
+    - metallb_is_first_control_plane | bool
+  tags:
+    - metallb
+
+- name: Validate MetalLB pods
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      get pods -n {{ metallb_namespace }}
   changed_when: false
   when:
-    - metallb_role_enabled
-    - metallb_enabled
+    - metallb_effective_enabled | bool
+    - metallb_is_first_control_plane | bool
+  tags:
+    - metallb
+
+- name: Validate MetalLB IPAddressPools
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      get ipaddresspools -n {{ metallb_namespace }}
+  changed_when: false
+  when:
+    - metallb_effective_enabled | bool
+    - metallb_is_first_control_plane | bool
+  tags:
+    - metallb
+
+- name: Validate MetalLB L2Advertisements
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig {{ kubeconfig_path }}
+      get l2advertisements -n {{ metallb_namespace }}
+  changed_when: false
+  when:
+    - metallb_effective_enabled | bool
+    - metallb_is_first_control_plane | bool
+  tags:
+    - metallb

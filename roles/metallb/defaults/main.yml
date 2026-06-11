@@ -1,2 +1,15 @@
 ---
 metallb_role_enabled: true
+metallb_enabled: false
+metallb_namespace: metallb-system
+metallb_version: v0.14.9
+metallb_address_pool: []
+kubeconfig_path: /etc/kubernetes/admin.conf
+
+metallb_manifest_base_url: https://raw.githubusercontent.com/metallb/metallb
+metallb_manifest_name: metallb-native.yaml
+metallb_manifest_dir: /root/metallb
+metallb_manifest_path: /root/metallb/metallb-native.yaml
+metallb_ipaddresspool_path: /root/metallb/ipaddresspool.yaml
+metallb_l2advertisement_path: /root/metallb/l2advertisement.yaml
+metallb_wait_timeout_seconds: 300
