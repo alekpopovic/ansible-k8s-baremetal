@@ -1,2 +1,13 @@
 ---
 kubernetes_packages_enabled: true
+kubernetes_packages_hold: true
+kubernetes_packages_names:
+  - kubelet
+  - kubeadm
+  - kubectl
+
+kubernetes_apt_keyring_dir: /etc/apt/keyrings
+kubernetes_apt_keyring_path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+kubernetes_apt_release_key_path: /etc/apt/keyrings/kubernetes-release.key
+kubernetes_apt_repository_file: kubernetes
+kubernetes_package_version_suffix: "-1.1"
